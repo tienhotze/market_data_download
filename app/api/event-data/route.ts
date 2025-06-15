@@ -30,22 +30,33 @@ export async function POST(request: NextRequest) {
 
     // Fetch data for all assets
     const allAssetData: Record<string, any> = {}
+    let githubAvailable = true
 
     for (const [assetName, assetTicker] of Object.entries(ASSET_TICKERS)) {
       try {
         console.log(`Fetching data for ${assetName} (${assetTicker})`)
 
-        // Try to get data from GitHub repo first
+        // Try to get data from GitHub repo first (only if GitHub is available)
         let priceData: any[] = []
 
-        try {
-          const repoData = await checkGitHubRepo(assetTicker, startDate, endDate)
-          if (repoData.length > 0) {
-            console.log(`Found ${repoData.length} data points in GitHub repo for ${assetName}`)
-            priceData = repoData
+        if (githubAvailable) {
+          try {
+            console.log(`Checking GitHub repo for ${assetName}...`)
+            const repoData = await checkGitHubRepo(assetTicker, startDate, endDate)
+            if (repoData.length > 0) {
+              console.log(`Found ${repoData.length} data points in GitHub repo for ${assetName}`)
+              priceData = repoData
+            } else {
+              console.log(`No repo data found for ${assetName}`)
+            }
+          } catch (repoError) {
+            console.log(`GitHub repo check failed for ${assetName}:`, repoError)
+            // If GitHub is consistently failing, disable it for remaining assets
+            if (repoError instanceof Error && repoError.message.includes("Parse error")) {
+              console.log("Disabling GitHub checks for remaining assets due to API issues")
+              githubAvailable = false
+            }
           }
-        } catch (error) {
-          console.log(`No existing repo data found for ${assetName}, will fetch fresh data`)
         }
 
         // If we don't have enough data, fetch from Yahoo Finance
@@ -56,11 +67,16 @@ export async function POST(request: NextRequest) {
             priceData = yahooData
             console.log(`Fetched ${priceData.length} data points from Yahoo Finance for ${assetName}`)
 
-            // Save to GitHub for future use
-            await saveDataToGitHub(assetTicker, priceData)
-          } catch (error) {
-            console.log(`Yahoo Finance failed for ${assetName}, using mock data`)
+            // Only try to save to GitHub if it's available and we have a token
+            if (githubAvailable && process.env.GITHUB_TOKEN) {
+              saveDataToGitHub(assetTicker, priceData).catch((saveError) => {
+                console.log(`Failed to save ${assetName} to GitHub:`, saveError)
+              })
+            }
+          } catch (yahooError) {
+            console.log(`Yahoo Finance failed for ${assetName}:`, yahooError)
             priceData = generateMockData(startDate, endDate, assetName)
+            console.log(`Using mock data for ${assetName}`)
           }
         }
 
@@ -69,12 +85,18 @@ export async function POST(request: NextRequest) {
         allAssetData[assetName] = filteredData
 
         console.log(`Processed ${filteredData.dates.length} data points for ${assetName}`)
-      } catch (error) {
-        console.error(`Error processing ${assetName}:`, error)
+      } catch (assetError) {
+        console.error(`Error processing ${assetName}:`, assetError)
         // Generate fallback data for this asset
-        const mockData = generateMockData(startDate, endDate, assetName)
-        const filteredData = filterAndReindexData(mockData, startDate, endDate, eventDate, assetName)
-        allAssetData[assetName] = filteredData
+        try {
+          const mockData = generateMockData(startDate, endDate, assetName)
+          const filteredData = filterAndReindexData(mockData, startDate, endDate, eventDate, assetName)
+          allAssetData[assetName] = filteredData
+          console.log(`Using fallback mock data for ${assetName}`)
+        } catch (fallbackError) {
+          console.error(`Even fallback failed for ${assetName}:`, fallbackError)
+          // Skip this asset
+        }
       }
     }
 
@@ -119,11 +141,17 @@ async function checkGitHubRepo(ticker: string, startDate: Date, endDate: Date) {
   try {
     const repoOwner = "tienhotze"
     const repoName = "market_data_download"
-    const dataPath = `data/${ticker}`
+
+    // URL encode the ticker to handle special characters like ^, =, etc.
+    const encodedTicker = encodeURIComponent(ticker)
+    const dataPath = `data/${encodedTicker}`
 
     console.log(`Checking GitHub repo: ${repoOwner}/${repoName}/${dataPath}`)
 
-    const response = await fetch(`https://api.github.com/repos/${repoOwner}/${repoName}/contents/${dataPath}`, {
+    const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${dataPath}`
+    console.log(`GitHub API URL: ${apiUrl}`)
+
+    const response = await fetch(apiUrl, {
       headers: {
         Authorization: `Bearer ${githubToken}`,
         Accept: "application/vnd.github.v3+json",
@@ -131,14 +159,49 @@ async function checkGitHubRepo(ticker: string, startDate: Date, endDate: Date) {
       },
     })
 
+    console.log(`GitHub API response status: ${response.status}`)
+
     if (!response.ok) {
-      console.log(`GitHub API response: ${response.status} ${response.statusText}`)
+      if (response.status === 404) {
+        console.log(`No data directory found for ticker ${ticker}`)
+        return []
+      }
+      if (response.status === 403) {
+        console.log(`GitHub API rate limited or forbidden for ticker ${ticker}`)
+        return []
+      }
+      if (response.status === 401) {
+        console.log(`GitHub API authentication failed for ticker ${ticker}`)
+        return []
+      }
+      console.log(`GitHub API error: ${response.status} ${response.statusText}`)
       return []
     }
 
-    const files = await response.json()
+    const responseText = await response.text()
+    console.log(`GitHub API response length: ${responseText.length}`)
+
+    // Check if response looks like JSON before parsing
+    if (!responseText.trim().startsWith("[") && !responseText.trim().startsWith("{")) {
+      console.log(`GitHub API returned non-JSON response: ${responseText.substring(0, 100)}...`)
+      return []
+    }
+
+    let files
+    try {
+      files = JSON.parse(responseText)
+    } catch (parseError) {
+      console.error("Failed to parse GitHub API response:", parseError)
+      console.log(`Response preview: ${responseText.substring(0, 200)}...`)
+      return []
+    }
+
     if (!Array.isArray(files)) {
-      console.log("No files found in repo")
+      console.log("GitHub API response is not an array:", typeof files)
+      // If it's an object with a message, it might be an error
+      if (files && typeof files === "object" && files.message) {
+        console.log(`GitHub API error message: ${files.message}`)
+      }
       return []
     }
 
@@ -148,15 +211,22 @@ async function checkGitHubRepo(ticker: string, startDate: Date, endDate: Date) {
     let allData: any[] = []
 
     for (const file of files) {
-      if (file.name.endsWith(".csv")) {
+      if (file.name && file.name.endsWith(".csv") && file.download_url) {
         try {
           console.log(`Fetching file: ${file.name}`)
-          const fileResponse = await fetch(file.download_url)
+          const fileResponse = await fetch(file.download_url, {
+            headers: {
+              "User-Agent": "Market-Data-Downloader",
+            },
+          })
+
           if (fileResponse.ok) {
             const csvText = await fileResponse.text()
             const fileData = parseCSVData(csvText)
             allData = [...allData, ...fileData]
             console.log(`Added ${fileData.length} rows from ${file.name}`)
+          } else {
+            console.log(`Failed to fetch file ${file.name}: ${fileResponse.status}`)
           }
         } catch (error) {
           console.error(`Error fetching file ${file.name}:`, error)
@@ -221,35 +291,71 @@ async function fetchYahooData(ticker: string, startDate: Date, endDate: Date) {
 }
 
 function parseCSVData(csvText: string) {
-  const lines = csvText.trim().split("\n")
-  if (lines.length < 2) {
-    throw new Error("Invalid CSV data received")
-  }
+  try {
+    const lines = csvText.trim().split("\n")
+    if (lines.length < 2) {
+      console.log("CSV has insufficient data")
+      return []
+    }
 
-  const data = []
-  for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(",")
-    if (values.length >= 6 && values[1] !== "null" && values[1] !== "") {
+    const data = []
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim()
+      if (!line) continue
+
+      const values = line.split(",")
+      if (values.length < 6) {
+        console.log(`Skipping line ${i}: insufficient columns`)
+        continue
+      }
+
+      // Check for null or empty values
+      if (values[1] === "null" || values[1] === "" || values[4] === "null" || values[4] === "") {
+        console.log(`Skipping line ${i}: null values`)
+        continue
+      }
+
       try {
+        const open = Number.parseFloat(values[1])
+        const high = Number.parseFloat(values[2])
+        const low = Number.parseFloat(values[3])
+        const close = Number.parseFloat(values[4])
+        const volume = values[6] ? Number.parseInt(values[6]) : 0
+
+        // Validate that all prices are valid numbers
+        if (isNaN(open) || isNaN(high) || isNaN(low) || isNaN(close)) {
+          console.log(`Skipping line ${i}: invalid price data`)
+          continue
+        }
+
+        // Basic sanity check: high should be >= low
+        if (high < low) {
+          console.log(`Skipping line ${i}: high < low`)
+          continue
+        }
+
         const row = {
           date: values[0],
-          open: Number.parseFloat(values[1]),
-          high: Number.parseFloat(values[2]),
-          low: Number.parseFloat(values[3]),
-          close: Number.parseFloat(values[4]),
-          volume: Number.parseInt(values[6]) || 0,
+          open,
+          high,
+          low,
+          close,
+          volume: isNaN(volume) ? 0 : volume,
         }
 
-        if (!isNaN(row.open) && !isNaN(row.high) && !isNaN(row.low) && !isNaN(row.close)) {
-          data.push(row)
-        }
+        data.push(row)
       } catch (parseError) {
+        console.log(`Error parsing line ${i}:`, parseError)
         continue
       }
     }
-  }
 
-  return data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    console.log(`Successfully parsed ${data.length} rows from CSV`)
+    return data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  } catch (error) {
+    console.error("Error parsing CSV data:", error)
+    return []
+  }
 }
 
 function generateMockData(startDate: Date, endDate: Date, assetName: string) {
@@ -305,13 +411,24 @@ async function saveDataToGitHub(ticker: string, data: any[]) {
   try {
     console.log(`Saving ${data.length} data points to GitHub for ${ticker}`)
 
+    // Convert the data to the format expected by save_prices API
+    const formattedData = data.map((row) => ({
+      Date: row.date,
+      Open: row.open,
+      High: row.high,
+      Low: row.low,
+      Close: row.close,
+      "Adj Close": row.close, // Use close as adj close for simplicity
+      Volume: row.volume,
+    }))
+
     // Use the existing save_prices API
     const response = await fetch(`${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/save_prices`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        ticker: { symbol: ticker, name: ticker, type: "index" },
-        data: data,
+        ticker: ticker,
+        data: formattedData,
         period: "event-analysis",
       }),
     })
@@ -319,7 +436,8 @@ async function saveDataToGitHub(ticker: string, data: any[]) {
     if (response.ok) {
       console.log("Successfully saved data to GitHub")
     } else {
-      console.log("Failed to save data to GitHub:", response.statusText)
+      const errorText = await response.text()
+      console.log("Failed to save data to GitHub:", response.status, errorText)
     }
   } catch (error) {
     console.error("Error saving to GitHub:", error)

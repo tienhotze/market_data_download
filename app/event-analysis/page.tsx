@@ -16,8 +16,10 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ArrowLeft, Plus, Calendar, TrendingUp } from "lucide-react"
 import { EventChart } from "@/components/event-chart"
+import { MultiEventChart } from "@/components/multi-event-chart"
 import type { EventData } from "@/types"
 
 const DEFAULT_EVENTS: EventData[] = [
@@ -246,133 +248,146 @@ export default function EventAnalysisPage() {
         </header>
 
         <div className="max-w-6xl mx-auto space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Select Event to Analyze</CardTitle>
-              <CardDescription>
-                Choose from {events.length} historical events including Middle East conflicts, economic crises, and
-                policy changes
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-4">
-                <div className="flex-1">
-                  <Select onValueChange={handleEventSelect}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select an event to analyze..." />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-96">
-                      {Object.entries(groupedEvents).map(([category, categoryEvents]) => (
-                        <div key={category}>
-                          <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-50">
-                            {category} ({categoryEvents.length})
+          <Tabs defaultValue="single-event" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="single-event">Single Event Analysis</TabsTrigger>
+              <TabsTrigger value="multi-event">Multi-Event Comparison</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="single-event" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Select Event to Analyze</CardTitle>
+                  <CardDescription>
+                    Choose from {events.length} historical events including Middle East conflicts, economic crises, and
+                    policy changes
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex gap-4">
+                    <div className="flex-1">
+                      <Select onValueChange={handleEventSelect}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select an event to analyze..." />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-96">
+                          {Object.entries(groupedEvents).map(([category, categoryEvents]) => (
+                            <div key={category}>
+                              <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-50">
+                                {category} ({categoryEvents.length})
+                              </div>
+                              {categoryEvents
+                                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                .map((event) => (
+                                  <SelectItem key={event.id} value={event.id}>
+                                    <div className="flex flex-col">
+                                      <span className="font-medium">{event.name}</span>
+                                      <span className="text-sm text-gray-500">
+                                        {new Date(event.date).toLocaleDateString()} • {event.category}
+                                      </span>
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                            </div>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline">
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Event
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Add Custom Event</DialogTitle>
+                          <DialogDescription>Add a new event to analyze its market impact</DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div>
+                            <Label htmlFor="event-name">Event Name</Label>
+                            <Input
+                              id="event-name"
+                              value={newEvent.name}
+                              onChange={(e) => setNewEvent({ ...newEvent, name: e.target.value })}
+                              placeholder="e.g., Fed Rate Decision"
+                            />
                           </div>
-                          {categoryEvents
-                            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                            .map((event) => (
-                              <SelectItem key={event.id} value={event.id}>
-                                <div className="flex flex-col">
-                                  <span className="font-medium">{event.name}</span>
-                                  <span className="text-sm text-gray-500">
-                                    {new Date(event.date).toLocaleDateString()} • {event.category}
-                                  </span>
-                                </div>
-                              </SelectItem>
-                            ))}
+                          <div>
+                            <Label htmlFor="event-date">Event Date</Label>
+                            <Input
+                              id="event-date"
+                              type="date"
+                              value={newEvent.date}
+                              onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="event-category">Category</Label>
+                            <Select onValueChange={(value) => setNewEvent({ ...newEvent, category: value })}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select category" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Fed">Fed Policy</SelectItem>
+                                <SelectItem value="Geopolitical">Geopolitical</SelectItem>
+                                <SelectItem value="Economic">Economic Data</SelectItem>
+                                <SelectItem value="Banking">Banking</SelectItem>
+                                <SelectItem value="Pandemic">Pandemic</SelectItem>
+                                <SelectItem value="Financial Crisis">Financial Crisis</SelectItem>
+                                <SelectItem value="Other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label htmlFor="event-description">Description</Label>
+                            <Input
+                              id="event-description"
+                              value={newEvent.description}
+                              onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
+                              placeholder="Brief description of the event"
+                            />
+                          </div>
                         </div>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Event
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Add Custom Event</DialogTitle>
-                      <DialogDescription>Add a new event to analyze its market impact</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div>
-                        <Label htmlFor="event-name">Event Name</Label>
-                        <Input
-                          id="event-name"
-                          value={newEvent.name}
-                          onChange={(e) => setNewEvent({ ...newEvent, name: e.target.value })}
-                          placeholder="e.g., Fed Rate Decision"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="event-date">Event Date</Label>
-                        <Input
-                          id="event-date"
-                          type="date"
-                          value={newEvent.date}
-                          onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="event-category">Category</Label>
-                        <Select onValueChange={(value) => setNewEvent({ ...newEvent, category: value })}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Fed">Fed Policy</SelectItem>
-                            <SelectItem value="Geopolitical">Geopolitical</SelectItem>
-                            <SelectItem value="Economic">Economic Data</SelectItem>
-                            <SelectItem value="Banking">Banking</SelectItem>
-                            <SelectItem value="Pandemic">Pandemic</SelectItem>
-                            <SelectItem value="Financial Crisis">Financial Crisis</SelectItem>
-                            <SelectItem value="Other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="event-description">Description</Label>
-                        <Input
-                          id="event-description"
-                          value={newEvent.description}
-                          onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
-                          placeholder="Brief description of the event"
-                        />
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setShowAddDialog(false)}>
-                        Cancel
-                      </Button>
-                      <Button onClick={handleAddEvent}>Add Event</Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </div>
-
-              {selectedEvent && (
-                <div className="p-4 bg-blue-50 rounded-lg border">
-                  <div className="flex items-start gap-3">
-                    <Calendar className="h-5 w-5 text-blue-600 mt-0.5" />
-                    <div>
-                      <h3 className="font-semibold text-blue-900">{selectedEvent.name}</h3>
-                      <p className="text-sm text-blue-700">
-                        {new Date(selectedEvent.date).toLocaleDateString()} • {selectedEvent.category}
-                      </p>
-                      {selectedEvent.description && (
-                        <p className="text-sm text-blue-600 mt-1">{selectedEvent.description}</p>
-                      )}
-                    </div>
+                        <DialogFooter>
+                          <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+                            Cancel
+                          </Button>
+                          <Button onClick={handleAddEvent}>Add Event</Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
 
-          {selectedEvent && <EventChart event={selectedEvent} />}
+                  {selectedEvent && (
+                    <div className="p-4 bg-blue-50 rounded-lg border">
+                      <div className="flex items-start gap-3">
+                        <Calendar className="h-5 w-5 text-blue-600 mt-0.5" />
+                        <div>
+                          <h3 className="font-semibold text-blue-900">{selectedEvent.name}</h3>
+                          <p className="text-sm text-blue-700">
+                            {new Date(selectedEvent.date).toLocaleDateString()} • {selectedEvent.category}
+                          </p>
+                          {selectedEvent.description && (
+                            <p className="text-sm text-blue-600 mt-1">{selectedEvent.description}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {selectedEvent && <EventChart event={selectedEvent} />}
+            </TabsContent>
+
+            <TabsContent value="multi-event" className="space-y-6">
+              <MultiEventChart events={events} />
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </div>
