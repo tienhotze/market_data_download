@@ -21,6 +21,7 @@ import { EventChart } from "@/components/event-chart"
 import type { EventData } from "@/types"
 
 const DEFAULT_EVENTS: EventData[] = [
+  // Original Events
   {
     id: "covid-crash",
     name: "COVID-19 Market Crash",
@@ -77,6 +78,108 @@ const DEFAULT_EVENTS: EventData[] = [
     category: "Geopolitical",
     description: "Terrorist attacks in US, markets closed for days",
   },
+
+  // Israeli Military Operations
+  {
+    id: "operation-litani",
+    name: "Operation Litani",
+    date: "1978-03-14",
+    category: "Geopolitical",
+    description: "Israeli invasion of South Lebanon to push PLO north of Litani River",
+  },
+  {
+    id: "lebanon-war-1982",
+    name: "1982 Lebanon War",
+    date: "1982-06-06",
+    category: "Geopolitical",
+    description: "Full-scale Israeli invasion of Lebanon, siege of Beirut",
+  },
+  {
+    id: "operation-accountability",
+    name: "Operation Accountability",
+    date: "1993-07-25",
+    category: "Geopolitical",
+    description: "Israeli shelling campaign against Hezbollah in Lebanon",
+  },
+  {
+    id: "operation-grapes-wrath",
+    name: "Operation Grapes of Wrath",
+    date: "1996-04-11",
+    category: "Geopolitical",
+    description: "Massive Israeli airstrikes in Lebanon in response to Katyusha fire",
+  },
+  {
+    id: "lebanon-war-2006",
+    name: "2006 Lebanon War",
+    date: "2006-07-12",
+    category: "Geopolitical",
+    description: "34-day war between Israel and Hezbollah triggered by cross-border raid",
+  },
+  {
+    id: "operation-cast-lead",
+    name: "Operation Cast Lead",
+    date: "2008-12-27",
+    category: "Geopolitical",
+    description: "Israeli air and ground campaign in Gaza against Hamas",
+  },
+  {
+    id: "operation-pillar-defense",
+    name: "Operation Pillar of Defense",
+    date: "2012-11-14",
+    category: "Geopolitical",
+    description: "Israeli operation in Gaza starting with targeted killing of Ahmed Jabari",
+  },
+  {
+    id: "operation-protective-edge",
+    name: "Operation Protective Edge",
+    date: "2014-07-08",
+    category: "Geopolitical",
+    description: "50-day Gaza war with Israeli ground invasion against Hamas",
+  },
+  {
+    id: "operation-guardian-walls",
+    name: "Operation Guardian of the Walls",
+    date: "2021-05-10",
+    category: "Geopolitical",
+    description: "11-day conflict triggered by Jerusalem tensions, Hamas rocket barrages",
+  },
+  {
+    id: "hamas-oct-7-attack",
+    name: "Hamas October 7 Attack",
+    date: "2023-10-07",
+    category: "Geopolitical",
+    description: "Coordinated Hamas attack on Israel, triggering largest war since 1973",
+  },
+  {
+    id: "israel-strike-iran-2025",
+    name: "Israel Strike on Iran (Tehran)",
+    date: "2025-06-14",
+    category: "Geopolitical",
+    description: "Reported Israeli airstrikes on Iranian nuclear-linked sites",
+  },
+
+  // Iranian & Proxy Operations
+  {
+    id: "iran-iraq-war",
+    name: "Iran-Iraq War Begins",
+    date: "1980-09-22",
+    category: "Geopolitical",
+    description: "Iraq invades Iran, starting 8-year war with major oil market impacts",
+  },
+  {
+    id: "hezbollah-raid-2006",
+    name: "Hezbollah Cross-Border Raid",
+    date: "2006-07-12",
+    category: "Geopolitical",
+    description: "Hezbollah kidnapping of Israeli soldiers sparks 2006 Lebanon War",
+  },
+  {
+    id: "iran-direct-attack-israel",
+    name: "Iran's Direct Attack on Israel",
+    date: "2024-04-13",
+    category: "Geopolitical",
+    description: "First direct Iranian missile and drone attack on Israel, largely intercepted",
+  },
 ]
 
 export default function EventAnalysisPage() {
@@ -111,6 +214,18 @@ export default function EventAnalysisPage() {
     setSelectedEvent(event || null)
   }
 
+  // Group events by category for better organization
+  const groupedEvents = events.reduce(
+    (acc, event) => {
+      if (!acc[event.category]) {
+        acc[event.category] = []
+      }
+      acc[event.category].push(event)
+      return acc
+    },
+    {} as Record<string, EventData[]>,
+  )
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
@@ -125,7 +240,7 @@ export default function EventAnalysisPage() {
                 <TrendingUp className="h-8 w-8" />
                 Event Analysis
               </h1>
-              <p className="text-lg text-gray-600">Analyze market impact of major events</p>
+              <p className="text-lg text-gray-600">Analyze market impact of major geopolitical and economic events</p>
             </div>
           </div>
         </header>
@@ -135,7 +250,8 @@ export default function EventAnalysisPage() {
             <CardHeader>
               <CardTitle>Select Event to Analyze</CardTitle>
               <CardDescription>
-                Choose from historical events or add your own to analyze S&P 500 market impact
+                Choose from {events.length} historical events including Middle East conflicts, economic crises, and
+                policy changes
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -145,16 +261,25 @@ export default function EventAnalysisPage() {
                     <SelectTrigger>
                       <SelectValue placeholder="Select an event to analyze..." />
                     </SelectTrigger>
-                    <SelectContent>
-                      {events.map((event) => (
-                        <SelectItem key={event.id} value={event.id}>
-                          <div className="flex flex-col">
-                            <span className="font-medium">{event.name}</span>
-                            <span className="text-sm text-gray-500">
-                              {event.date} • {event.category}
-                            </span>
+                    <SelectContent className="max-h-96">
+                      {Object.entries(groupedEvents).map(([category, categoryEvents]) => (
+                        <div key={category}>
+                          <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-50">
+                            {category} ({categoryEvents.length})
                           </div>
-                        </SelectItem>
+                          {categoryEvents
+                            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                            .map((event) => (
+                              <SelectItem key={event.id} value={event.id}>
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{event.name}</span>
+                                  <span className="text-sm text-gray-500">
+                                    {new Date(event.date).toLocaleDateString()} • {event.category}
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                        </div>
                       ))}
                     </SelectContent>
                   </Select>
@@ -235,7 +360,7 @@ export default function EventAnalysisPage() {
                     <div>
                       <h3 className="font-semibold text-blue-900">{selectedEvent.name}</h3>
                       <p className="text-sm text-blue-700">
-                        {selectedEvent.date} • {selectedEvent.category}
+                        {new Date(selectedEvent.date).toLocaleDateString()} • {selectedEvent.category}
                       </p>
                       {selectedEvent.description && (
                         <p className="text-sm text-blue-600 mt-1">{selectedEvent.description}</p>
