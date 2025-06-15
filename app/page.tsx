@@ -1,13 +1,17 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { SearchSection } from "@/components/search-section"
 import { DataTabs } from "@/components/data-tabs"
 import { QueryHistory } from "@/components/query-history"
 import { Disclaimer } from "@/components/disclaimer"
+import { Button } from "@/components/ui/button"
+import { TrendingUp } from "lucide-react"
 import type { TickerData, NewsItem, ResearchItem } from "@/types"
 
 export default function Home() {
+  const router = useRouter()
   const [selectedTicker, setSelectedTicker] = useState<TickerData | null>(null)
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null)
   const [selectedPeriod, setSelectedPeriod] = useState("1mo")
@@ -20,7 +24,17 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
         <header className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">Market Data Downloader</h1>
+          <div className="flex justify-center items-center gap-4 mb-4">
+            <h1 className="text-4xl font-bold text-gray-900">Market Data Downloader</h1>
+            <Button
+              onClick={() => router.push("/event-analysis")}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <TrendingUp className="h-4 w-4" />
+              Event Analysis
+            </Button>
+          </div>
           <p className="text-lg text-gray-600">Search, preview and save market data to GitHub</p>
         </header>
 

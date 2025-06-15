@@ -1,44 +1,32 @@
 export interface TickerData {
   symbol: string
   name: string
-  type: string
-}
-
-export interface PriceData {
-  Date: string
-  Open: number
-  High: number
-  Low: number
-  Close: number
-  "Adj Close": number
-  Volume: number
+  exchange?: string
+  type?: string
 }
 
 export interface NewsItem {
-  id: string
   title: string
-  publisher: string
-  publishedAt: string
-  url: string
   summary: string
+  url: string
+  published: string
+  source: string
 }
 
 export interface ResearchItem {
-  id: string
   title: string
-  publisher: string
-  publishedAt: string
-  url: string
   summary: string
+  url: string
+  published: string
+  source: string
+  analyst?: string
+  rating?: string
 }
 
-export interface QueryHistoryItem {
-  ticker: TickerData
-  dateRange: { start: string; end: string }
-  timestamp: string
-}
-
-export interface GitHubCommitResponse {
-  sha: string
-  githubUrl: string
+export interface EventData {
+  id: string
+  name: string
+  date: string
+  category: string
+  description: string
 }

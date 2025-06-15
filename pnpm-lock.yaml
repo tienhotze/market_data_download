@@ -20,6 +20,9 @@ importers:
       '@radix-ui/react-select':
         specifier: latest
         version: 2.2.5(@types/react-dom@18.0.0)(@types/react@18.0.0)(react-dom@18.0.0(react@18.0.0))(react@18.0.0)
+      '@radix-ui/react-slot':
+        specifier: latest
+        version: 1.2.3(@types/react@18.0.0)(react@18.0.0)
       '@radix-ui/react-tabs':
         specifier: latest
         version: 1.1.12(@types/react-dom@18.0.0)(@types/react@18.0.0)(react-dom@18.0.0(react@18.0.0))(react@18.0.0)
@@ -41,6 +44,9 @@ importers:
       next:
         specifier: 14.2.16
         version: 14.2.16(react-dom@18.0.0(react@18.0.0))(react@18.0.0)
+      next-themes:
+        specifier: latest
+        version: 0.4.6(react-dom@18.0.0(react@18.0.0))(react@18.0.0)
       plotly.js:
         specifier: ^2.27.0
         version: 2.27.0
@@ -2096,6 +2102,12 @@ packages:
     resolution: {integrity: sha512-6R9fqJ5Zcmf+uYaFgdIHmLwNldn5HbK8L5ybn7Uz+ylX/rnOsSp1AHcvQSrCaFN+qNM1wpymHqD7mVasEOlHGQ==}
     engines: {node: '>= 4.4.x'}
     hasBin: true
+
+  next-themes@0.4.6:
+    resolution: {integrity: sha512-pZvgD5L0IEvX5/9GWyHMf3m8BKiVQwsCMHfoFosXtXBMnaS0ZnIJ9ST4b4NqLVKDEm8QBxoNNGNaBv2JNF6XNA==}
+    peerDependencies:
+      react: ^16.8 || ^17 || ^18 || ^19 || ^19.0.0-rc
+      react-dom: ^16.8 || ^17 || ^18 || ^19 || ^19.0.0-rc
 
   next-tick@1.1.0:
     resolution: {integrity: sha512-CXdUiJembsNjuToQvxayPZF9Vqht7hewsvy2sOWafLvi2awflj9mOC6bHIg50orX8IJvWKY9wYQ/zB2kogPslQ==}
@@ -5160,6 +5172,11 @@ snapshots:
       sax: 1.4.1
     transitivePeerDependencies:
       - supports-color
+
+  next-themes@0.4.6(react-dom@18.0.0(react@18.0.0))(react@18.0.0):
+    dependencies:
+      react: 18.0.0
+      react-dom: 18.0.0(react@18.0.0)
 
   next-tick@1.1.0: {}
 
