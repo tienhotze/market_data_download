@@ -1,6 +1,8 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import type React from "react"
+
+import { useState } from "react"
 import { Search, Calendar, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -32,6 +34,20 @@ const QUICK_RANGES = [
   { label: "60m", months: 60 },
 ]
 
+// Popular tickers for quick selection
+const POPULAR_TICKERS: TickerData[] = [
+  { symbol: "AAPL", name: "Apple Inc.", type: "Equity" },
+  { symbol: "MSFT", name: "Microsoft Corporation", type: "Equity" },
+  { symbol: "GOOGL", name: "Alphabet Inc.", type: "Equity" },
+  { symbol: "AMZN", name: "Amazon.com Inc.", type: "Equity" },
+  { symbol: "TSLA", name: "Tesla Inc.", type: "Equity" },
+  { symbol: "META", name: "Meta Platforms Inc.", type: "Equity" },
+  { symbol: "NVDA", name: "NVIDIA Corporation", type: "Equity" },
+  { symbol: "SPY", name: "SPDR S&P 500 ETF Trust", type: "ETF" },
+  { symbol: "QQQ", name: "Invesco QQQ Trust", type: "ETF" },
+  { symbol: "BTC-USD", name: "Bitcoin USD", type: "Cryptocurrency" },
+]
+
 export function SearchSection({
   selectedTicker,
   setSelectedTicker,
@@ -51,40 +67,64 @@ export function SearchSection({
   const [endDate, setEndDate] = useState("")
   const { toast } = useToast()
 
-  // Debounced search
-  const debouncedSearch = useCallback(
-    debounce(async (query: string) => {
-      if (query.length < 2) {
-        setSearchResults([])
-        setShowResults(false)
-        return
-      }
+  // Simple search function without debouncing
+  const performSearch = async (query: string) => {
+    if (!query || query.length < 2) {
+      setSearchResults([])
+      setShowResults(false)
+      return
+    }
 
-      setSearchLoading(true)
-      try {
-        const response = await fetch("/api/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ q: query, limit: 10 }),
-        })
+    setSearchLoading(true)
+    try {
+      const response = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ q: query, limit: 10 }),
+      })
 
-        if (response.ok) {
-          const results = await response.json()
+      if (response.ok) {
+        const results = await response.json()
+        if (Array.isArray(results)) {
           setSearchResults(results)
           setShowResults(true)
+        } else {
+          setSearchResults([])
+          setShowResults(false)
         }
-      } catch (error) {
-        console.error("Search error:", error)
-      } finally {
-        setSearchLoading(false)
+      } else {
+        const errorData = await response.json()
+        toast({
+          title: "Search Error",
+          description: errorData.error || "Failed to search tickers",
+          variant: "destructive",
+        })
+        setSearchResults([])
+        setShowResults(false)
       }
-    }, 2000),
-    [],
-  )
+    } catch (error) {
+      console.error("Search error:", error)
+      toast({
+        title: "Search Error",
+        description: "Failed to search tickers",
+        variant: "destructive",
+      })
+      setSearchResults([])
+      setShowResults(false)
+    } finally {
+      setSearchLoading(false)
+    }
+  }
 
-  useEffect(() => {
-    debouncedSearch(searchQuery)
-  }, [searchQuery, debouncedSearch])
+  const handleSearchClick = () => {
+    performSearch(searchQuery)
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      performSearch(searchQuery)
+    }
+  }
 
   const handleTickerSelect = (ticker: TickerData) => {
     setSelectedTicker(ticker)
@@ -165,15 +205,20 @@ export function SearchSection({
         <div className="space-y-4">
           {/* Search Section */}
           <div className="relative">
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search tickers (e.g., AAPL, TSLA, SPY)"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-              {searchLoading && <Loader2 className="absolute right-3 top-3 h-4 w-4 animate-spin text-gray-400" />}
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Enter ticker symbol (e.g., AAPL, TSLA, SPY)"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  className="pl-10"
+                />
+              </div>
+              <Button onClick={handleSearchClick} disabled={searchLoading || !searchQuery}>
+                {searchLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Search"}
+              </Button>
             </div>
 
             {/* Search Results */}
@@ -191,6 +236,24 @@ export function SearchSection({
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Popular Tickers */}
+          <div>
+            <span className="text-sm font-medium text-gray-700 mb-2 block">Popular tickers:</span>
+            <div className="flex flex-wrap gap-2">
+              {POPULAR_TICKERS.map((ticker) => (
+                <Button
+                  key={ticker.symbol}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleTickerSelect(ticker)}
+                  className="text-xs"
+                >
+                  {ticker.symbol}
+                </Button>
+              ))}
+            </div>
           </div>
 
           {/* Quick Range Buttons */}
@@ -254,13 +317,4 @@ export function SearchSection({
       </CardContent>
     </Card>
   )
-}
-
-// Debounce utility function
-function debounce<T extends (...args: any[]) => any>(func: T, wait: number): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeout)
-    timeout = setTimeout(() => func(...args), wait)
-  }
 }
