@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { Search, Loader2, X } from "lucide-react"
+import { Search, Loader2, X, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -61,6 +61,7 @@ export function SearchSection({
   setLoading,
 }: SearchSectionProps) {
   const [searchQuery, setSearchQuery] = useState("")
+  const [manualTicker, setManualTicker] = useState("")
   const [searchResults, setSearchResults] = useState<TickerData[]>([])
   const [showResults, setShowResults] = useState(false)
   const [searchLoading, setSearchLoading] = useState(false)
@@ -132,9 +133,16 @@ export function SearchSection({
     }
   }
 
+  const handleManualKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleManualDownload()
+    }
+  }
+
   const handleTickerSelect = (ticker: TickerData) => {
     setSelectedTicker(ticker)
     setSearchQuery(ticker.symbol)
+    setManualTicker("") // Clear manual input when selecting from search
     setShowResults(false)
 
     // Save to recent tickers and update state
@@ -158,21 +166,53 @@ export function SearchSection({
     setRecentTickers([])
   }
 
+  const handleManualDownload = async () => {
+    if (!manualTicker.trim() || !selectedPeriod) {
+      toast({
+        title: "Missing Information",
+        description: "Please enter a ticker symbol and select a time period",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const tickerSymbol = manualTicker.trim().toUpperCase()
+
+    // Create a temporary ticker object for manual input
+    const manualTickerData: TickerData = {
+      symbol: tickerSymbol,
+      name: `${tickerSymbol} (Manual Entry)`,
+      type: "Manual",
+    }
+
+    setSelectedTicker(manualTickerData)
+    setSearchQuery("") // Clear search when using manual input
+
+    // Save to recent tickers
+    saveRecentTicker(manualTickerData)
+    setRecentTickers(getRecentTickers())
+
+    await downloadData(manualTickerData)
+  }
+
   const handleDownload = async () => {
     if (!selectedTicker || !selectedPeriod) return
+    await downloadData(selectedTicker)
+  }
 
+  const downloadData = async (ticker: TickerData) => {
     setLoading(true)
     try {
       // Save query to history with period info
       const dummyRange = { start: `${selectedPeriod} ago`, end: "today" }
-      saveQueryToHistory(selectedTicker, dummyRange)
+      saveQueryToHistory(ticker, dummyRange)
 
       // Download prices using period (with extra month for technical indicators)
       const pricesResponse = await fetch("/api/download", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tickers: [selectedTicker.symbol],
+          tickers: [ticker.symbol],
           period: selectedPeriod,
           extraData: true, // Request extra data for technical indicators
         }),
@@ -186,7 +226,7 @@ export function SearchSection({
         if (pricesResult.source) {
           toast({
             title: "Data Downloaded",
-            description: `Successfully downloaded ${pricesResult.rows || 0} data points from ${pricesResult.source}`,
+            description: `Successfully downloaded ${pricesResult.rows || 0} data points for ${ticker.symbol} from ${pricesResult.source}`,
           })
         }
       } else {
@@ -200,7 +240,7 @@ export function SearchSection({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ticker: selectedTicker.symbol,
+          ticker: ticker.symbol,
         }),
       })
 
@@ -230,7 +270,7 @@ export function SearchSection({
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                 <Input
-                  placeholder="Enter ticker symbol (e.g., AAPL, TSLA, SPY)"
+                  placeholder="Search ticker symbols (e.g., AAPL, TSLA, SPY)"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyPress={handleKeyPress}
@@ -257,6 +297,35 @@ export function SearchSection({
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Manual Ticker Input Section */}
+          <div className="border-t pt-4">
+            <div className="mb-2">
+              <span className="text-sm font-medium text-gray-700">Or enter ticker manually:</span>
+            </div>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Download className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Enter any ticker (e.g., ^TNX, CL=F, GC=F, EURUSD=X)"
+                  value={manualTicker}
+                  onChange={(e) => setManualTicker(e.target.value.toUpperCase())}
+                  onKeyPress={handleManualKeyPress}
+                  className="pl-10"
+                />
+              </div>
+              <Button
+                onClick={handleManualDownload}
+                disabled={loading || !manualTicker.trim() || !selectedPeriod}
+                variant="secondary"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Download"}
+              </Button>
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              Works with any symbol: stocks, indices (^TNX), futures (CL=F), forex (EURUSD=X), crypto (BTC-USD)
+            </div>
           </div>
 
           {/* Popular Tickers */}
@@ -327,24 +396,26 @@ export function SearchSection({
             </div>
           </div>
 
-          {/* Download Button */}
-          <div className="flex justify-center">
-            <Button
-              onClick={handleDownload}
-              disabled={!selectedTicker || !selectedPeriod || loading}
-              className="w-full md:w-auto px-8"
-              size="lg"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Downloading...
-                </>
-              ) : (
-                "Download Data"
-              )}
-            </Button>
-          </div>
+          {/* Main Download Button (for search results) */}
+          {selectedTicker && !manualTicker && (
+            <div className="flex justify-center">
+              <Button
+                onClick={handleDownload}
+                disabled={!selectedTicker || !selectedPeriod || loading}
+                className="w-full md:w-auto px-8"
+                size="lg"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Downloading...
+                  </>
+                ) : (
+                  "Download Data"
+                )}
+              </Button>
+            </div>
+          )}
 
           {/* Selected Ticker Display */}
           {selectedTicker && (
