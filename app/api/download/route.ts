@@ -3,17 +3,17 @@ import { type NextRequest, NextResponse } from "next/server"
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { tickers, period } = body
+    const { tickers, period, extraData = false } = body
 
     if (!tickers || !Array.isArray(tickers) || tickers.length === 0) {
       return NextResponse.json({ error: "No tickers provided" }, { status: 400 })
     }
 
     const ticker = tickers[0]
-    console.log(`Download request: ticker=${ticker}, period=${period}`)
+    console.log(`Download request: ticker=${ticker}, period=${period}, extraData=${extraData}`)
 
-    // Convert period to timestamps
-    const { startTimestamp, endTimestamp } = getPeriodTimestamps(period)
+    // Convert period to timestamps (add extra month if requested for technical indicators)
+    const { startTimestamp, endTimestamp } = getPeriodTimestamps(period, extraData)
 
     try {
       // Try multiple approaches to fetch data
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       if (!yahooData || yahooData.length === 0) {
         try {
           console.log("Trying Alpha Vantage...")
-          yahooData = await fetchAlphaVantageData(ticker, period)
+          yahooData = await fetchAlphaVantageData(ticker, period, extraData)
           dataSource = "Alpha Vantage"
         } catch (error) {
           console.log("Alpha Vantage failed:", error)
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       // Approach 4: Generate realistic mock data as fallback
       if (!yahooData || yahooData.length === 0) {
         console.log("All external APIs failed, generating realistic mock data...")
-        yahooData = generateRealisticMockData(ticker, period)
+        yahooData = generateRealisticMockData(ticker, period, extraData)
         dataSource = "Mock Data (External APIs unavailable)"
       }
 
@@ -66,19 +66,21 @@ export async function POST(request: NextRequest) {
         period,
         rows: yahooData.length,
         source: dataSource,
+        extraData,
         warning: dataSource.includes("Mock") ? "Using mock data due to API limitations" : undefined,
       })
     } catch (fetchError) {
       console.error("All fetch methods failed:", fetchError)
 
       // Final fallback to mock data
-      const fallbackData = generateRealisticMockData(ticker, period)
+      const fallbackData = generateRealisticMockData(ticker, period, extraData)
       return NextResponse.json({
         data: fallbackData,
         ticker,
         period,
         rows: fallbackData.length,
         source: "Mock Data (Fallback)",
+        extraData,
         warning: "External APIs unavailable, using mock data",
         error: fetchError instanceof Error ? fetchError.message : "Unknown error",
       })
@@ -92,7 +94,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function getPeriodTimestamps(period: string) {
+function getPeriodTimestamps(period: string, extraData = false) {
   const now = Math.floor(Date.now() / 1000)
   const periodMap: Record<string, number> = {
     "1mo": 30 * 24 * 60 * 60,
@@ -106,7 +108,13 @@ function getPeriodTimestamps(period: string) {
     max: 20 * 365 * 24 * 60 * 60,
   }
 
-  const secondsBack = periodMap[period] || periodMap["1mo"]
+  let secondsBack = periodMap[period] || periodMap["1mo"]
+
+  // Add extra month for technical indicators
+  if (extraData) {
+    secondsBack += 30 * 24 * 60 * 60 // Add 30 days
+  }
+
   const startTimestamp = now - secondsBack
 
   return { startTimestamp, endTimestamp: now }
@@ -160,7 +168,7 @@ async function fetchYahooFinanceV2(symbol: string, startTimestamp: number, endTi
   return parseYahooJSON(data, symbol)
 }
 
-async function fetchAlphaVantageData(symbol: string, period: string) {
+async function fetchAlphaVantageData(symbol: string, period: string, extraData = false) {
   // Alpha Vantage free API (no key required for demo, but limited)
   const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&outputsize=full&apikey=demo`
 
@@ -175,7 +183,7 @@ async function fetchAlphaVantageData(symbol: string, period: string) {
   }
 
   const data = await response.json()
-  return parseAlphaVantageData(data, period)
+  return parseAlphaVantageData(data, period, extraData)
 }
 
 function parseYahooCSV(csvText: string) {
@@ -253,7 +261,7 @@ function parseYahooJSON(data: any, symbol: string) {
   }
 }
 
-function parseAlphaVantageData(data: any, period: string) {
+function parseAlphaVantageData(data: any, period: string, extraData = false) {
   const timeSeries = data["Time Series (Daily)"]
   if (!timeSeries) {
     throw new Error("No time series data found in Alpha Vantage response")
@@ -271,7 +279,11 @@ function parseAlphaVantageData(data: any, period: string) {
     max: 10000,
   }
 
-  const maxDays = periodDays[period] || 30
+  let maxDays = periodDays[period] || 30
+  if (extraData) {
+    maxDays += 30 // Add extra month
+  }
+
   const cutoffDate = new Date()
   cutoffDate.setDate(cutoffDate.getDate() - maxDays)
 
@@ -295,7 +307,7 @@ function parseAlphaVantageData(data: any, period: string) {
   return parsedData.sort((a, b) => new Date(b.Date).getTime() - new Date(a.Date).getTime())
 }
 
-function generateRealisticMockData(ticker: string, period: string) {
+function generateRealisticMockData(ticker: string, period: string, extraData = false) {
   const periodDays: Record<string, number> = {
     "1mo": 30,
     "2mo": 60,
@@ -308,7 +320,11 @@ function generateRealisticMockData(ticker: string, period: string) {
     max: 3650,
   }
 
-  const days = periodDays[period] || 30
+  let days = periodDays[period] || 30
+  if (extraData) {
+    days += 30 // Add extra month for technical indicators
+  }
+
   const endDate = new Date()
   const startDate = new Date(endDate.getTime() - days * 24 * 60 * 60 * 1000)
 
@@ -323,6 +339,7 @@ function generateRealisticMockData(ticker: string, period: string) {
     NVDA: 480,
     SPY: 450,
     QQQ: 380,
+    "^GSPC": 4500,
     "BTC-USD": 43000,
     "ETH-USD": 2500,
   }

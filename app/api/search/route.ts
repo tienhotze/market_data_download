@@ -11,8 +11,15 @@ export async function POST(request: NextRequest) {
 
     const searchQuery = query.trim().toUpperCase()
 
-    // Comprehensive ticker database
+    // Comprehensive ticker database (including S&P 500)
     const allTickers: Record<string, { name: string; type: string }> = {
+      // Indices
+      "^GSPC": { name: "S&P 500 Index", type: "Index" },
+      "^DJI": { name: "Dow Jones Industrial Average", type: "Index" },
+      "^IXIC": { name: "NASDAQ Composite", type: "Index" },
+      "^RUT": { name: "Russell 2000", type: "Index" },
+      "^VIX": { name: "CBOE Volatility Index", type: "Index" },
+
       // Major Tech Stocks
       AAPL: { name: "Apple Inc.", type: "Equity" },
       MSFT: { name: "Microsoft Corporation", type: "Equity" },
@@ -53,11 +60,6 @@ export async function POST(request: NextRequest) {
       // Crypto
       "BTC-USD": { name: "Bitcoin USD", type: "Cryptocurrency" },
       "ETH-USD": { name: "Ethereum USD", type: "Cryptocurrency" },
-
-      // Indices
-      "^GSPC": { name: "S&P 500", type: "Index" },
-      "^DJI": { name: "Dow Jones Industrial Average", type: "Index" },
-      "^IXIC": { name: "NASDAQ Composite", type: "Index" },
     }
 
     const results = []

@@ -2,13 +2,13 @@
 
 import type React from "react"
 
-import { useState } from "react"
-import { Search, Loader2 } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Search, Loader2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
-import { saveQueryToHistory } from "@/lib/storage"
+import { saveQueryToHistory, saveRecentTicker, getRecentTickers, clearRecentTickers } from "@/lib/storage"
 import type { TickerData } from "@/types"
 
 interface SearchSectionProps {
@@ -35,8 +35,10 @@ const PERIOD_OPTIONS = [
   { label: "Max", value: "max", description: "All available data" },
 ]
 
-// Popular tickers for quick selection
+// Popular tickers for quick selection (including S&P 500)
 const POPULAR_TICKERS: TickerData[] = [
+  { symbol: "^GSPC", name: "S&P 500 Index", type: "Index" },
+  { symbol: "SPY", name: "SPDR S&P 500 ETF Trust", type: "ETF" },
   { symbol: "AAPL", name: "Apple Inc.", type: "Equity" },
   { symbol: "MSFT", name: "Microsoft Corporation", type: "Equity" },
   { symbol: "GOOGL", name: "Alphabet Inc.", type: "Equity" },
@@ -44,9 +46,7 @@ const POPULAR_TICKERS: TickerData[] = [
   { symbol: "TSLA", name: "Tesla Inc.", type: "Equity" },
   { symbol: "META", name: "Meta Platforms Inc.", type: "Equity" },
   { symbol: "NVDA", name: "NVIDIA Corporation", type: "Equity" },
-  { symbol: "SPY", name: "SPDR S&P 500 ETF Trust", type: "ETF" },
   { symbol: "QQQ", name: "Invesco QQQ Trust", type: "ETF" },
-  { symbol: "BTC-USD", name: "Bitcoin USD", type: "Cryptocurrency" },
 ]
 
 export function SearchSection({
@@ -65,7 +65,13 @@ export function SearchSection({
   const [showResults, setShowResults] = useState(false)
   const [searchLoading, setSearchLoading] = useState(false)
   const [selectedPeriod, setSelectedPeriod] = useState("1mo")
+  const [recentTickers, setRecentTickers] = useState<TickerData[]>([])
   const { toast } = useToast()
+
+  // Load recent tickers on component mount
+  useEffect(() => {
+    setRecentTickers(getRecentTickers())
+  }, [])
 
   // Simple search function without debouncing
   const performSearch = async (query: string) => {
@@ -130,6 +136,10 @@ export function SearchSection({
     setSelectedTicker(ticker)
     setSearchQuery(ticker.symbol)
     setShowResults(false)
+
+    // Save to recent tickers and update state
+    saveRecentTicker(ticker)
+    setRecentTickers(getRecentTickers())
   }
 
   const handlePeriodSelect = (period: string) => {
@@ -143,6 +153,11 @@ export function SearchSection({
     })
   }
 
+  const handleClearRecentTickers = () => {
+    clearRecentTickers()
+    setRecentTickers([])
+  }
+
   const handleDownload = async () => {
     if (!selectedTicker || !selectedPeriod) return
 
@@ -152,13 +167,14 @@ export function SearchSection({
       const dummyRange = { start: `${selectedPeriod} ago`, end: "today" }
       saveQueryToHistory(selectedTicker, dummyRange)
 
-      // Download prices using period
+      // Download prices using period (with extra month for technical indicators)
       const pricesResponse = await fetch("/api/download", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tickers: [selectedTicker.symbol],
           period: selectedPeriod,
+          extraData: true, // Request extra data for technical indicators
         }),
       })
 
@@ -260,6 +276,37 @@ export function SearchSection({
               ))}
             </div>
           </div>
+
+          {/* Recent Tickers */}
+          {recentTickers.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">Recent searches:</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearRecentTickers}
+                  className="text-xs text-gray-500 hover:text-gray-700"
+                >
+                  <X className="h-3 w-3 mr-1" />
+                  Clear
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {recentTickers.map((ticker) => (
+                  <Button
+                    key={ticker.symbol}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleTickerSelect(ticker)}
+                    className="text-xs bg-blue-50 border-blue-200 hover:bg-blue-100"
+                  >
+                    {ticker.symbol}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Period Selection */}
           <div>
