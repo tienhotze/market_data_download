@@ -99,6 +99,16 @@ export async function POST(request: NextRequest) {
   }
 }
 
+function isWeekday(date: Date): boolean {
+  const day = date.getDay()
+  return day >= 1 && day <= 5 // Monday = 1, Friday = 5
+}
+
+function isWeekend(date: Date): boolean {
+  const day = date.getDay()
+  return day === 0 || day === 6 // Sunday = 0, Saturday = 6
+}
+
 async function checkGitHubRepo(ticker: string, startDate: Date, endDate: Date) {
   const githubToken = process.env.GITHUB_TOKEN
   if (!githubToken) {
@@ -271,20 +281,18 @@ function generateMockData(startDate: Date, endDate: Date, assetName: string) {
   }
 
   while (currentDate <= endDate) {
-    // Skip weekends for most assets (bonds trade less on weekends)
-    if (currentDate.getDay() !== 0 && currentDate.getDay() !== 6) {
-      const randomChange = (Math.random() - 0.5) * volatility * 2
-      basePrice *= 1 + randomChange
+    // Generate data for all days (including weekends) for mock data
+    const randomChange = (Math.random() - 0.5) * volatility * 2
+    basePrice *= 1 + randomChange
 
-      data.push({
-        date: currentDate.toISOString().split("T")[0],
-        open: basePrice * 0.999,
-        high: basePrice * 1.005,
-        low: basePrice * 0.995,
-        close: basePrice,
-        volume: Math.floor(Math.random() * 1000000000),
-      })
-    }
+    data.push({
+      date: currentDate.toISOString().split("T")[0],
+      open: basePrice * 0.999,
+      high: basePrice * 1.005,
+      low: basePrice * 0.995,
+      close: basePrice,
+      volume: Math.floor(Math.random() * 1000000000),
+    })
 
     currentDate.setDate(currentDate.getDate() + 1)
   }
@@ -318,6 +326,30 @@ async function saveDataToGitHub(ticker: string, data: any[]) {
   }
 }
 
+function forwardFillMissingPrices(data: any[]): any[] {
+  if (data.length === 0) return data
+
+  const filledData = [...data]
+
+  // Forward fill missing prices
+  for (let i = 1; i < filledData.length; i++) {
+    const current = filledData[i]
+    const previous = filledData[i - 1]
+
+    // If current prices are missing or invalid, use previous day's prices
+    if (isNaN(current.open) || isNaN(current.high) || isNaN(current.low) || isNaN(current.close)) {
+      console.log(`Forward filling missing prices for ${current.date} using ${previous.date}`)
+      current.open = previous.open
+      current.high = previous.high
+      current.low = previous.low
+      current.close = previous.close
+      current.volume = previous.volume || 0
+    }
+  }
+
+  return filledData
+}
+
 function filterAndReindexData(data: any[], startDate: Date, endDate: Date, eventDate: string, assetName: string) {
   console.log(
     `Filtering data for ${assetName} from ${startDate.toISOString().split("T")[0]} to ${
@@ -325,37 +357,62 @@ function filterAndReindexData(data: any[], startDate: Date, endDate: Date, event
     }`,
   )
 
-  // Filter to exact date range
-  const filtered = data.filter((row) => {
+  // First, filter to exact date range
+  const dateFiltered = data.filter((row) => {
     const rowDate = new Date(row.date)
     return rowDate >= startDate && rowDate <= endDate
   })
 
-  console.log(`Filtered to ${filtered.length} data points for ${assetName}`)
+  console.log(`Date filtered to ${dateFiltered.length} data points for ${assetName}`)
 
-  if (filtered.length === 0) {
+  if (dateFiltered.length === 0) {
     throw new Error(`No data available for ${assetName} in the specified date range`)
   }
 
+  // Forward fill any missing prices
+  const filledData = forwardFillMissingPrices(dateFiltered)
+
+  // Check if event date is a weekend
+  const eventDateObj = new Date(eventDate)
+  const eventIsWeekend = isWeekend(eventDateObj)
+
+  // Filter to weekdays only, but include event date if it's a weekend
+  const weekdayFiltered = filledData.filter((row) => {
+    const rowDate = new Date(row.date)
+    const isEventDate = row.date === eventDate
+
+    // Include if it's a weekday OR if it's the event date (even if weekend)
+    return isWeekday(rowDate) || (isEventDate && eventIsWeekend)
+  })
+
+  console.log(`Weekday filtered to ${weekdayFiltered.length} data points for ${assetName}`)
+  if (eventIsWeekend) {
+    console.log(`Event date ${eventDate} is a weekend - included in dataset`)
+  }
+
+  if (weekdayFiltered.length === 0) {
+    throw new Error(`No weekday data available for ${assetName} in the specified date range`)
+  }
+
   // Find event date price for reindexing
-  let eventRow = filtered.find((row) => row.date === eventDate)
+  let eventRow = weekdayFiltered.find((row) => row.date === eventDate)
 
   if (!eventRow) {
-    // Find closest date to event date
+    // Find closest weekday to event date
     const eventDateTime = new Date(eventDate).getTime()
-    eventRow = filtered.reduce((prev, curr) => {
+    eventRow = weekdayFiltered.reduce((prev, curr) => {
       const prevDiff = Math.abs(new Date(prev.date).getTime() - eventDateTime)
       const currDiff = Math.abs(new Date(curr.date).getTime() - eventDateTime)
       return currDiff < prevDiff ? curr : prev
     })
-    console.log(`Event date ${eventDate} not found for ${assetName}, using closest date ${eventRow.date}`)
+    console.log(`Event date ${eventDate} not found for ${assetName}, using closest weekday ${eventRow.date}`)
   }
 
   const eventPrice = eventRow.close
 
   // Create reindexed data with different formulas
-  const dates = filtered.map((row) => row.date)
-  const prices = filtered.map((row) => row.close)
+  const dates = weekdayFiltered.map((row) => row.date)
+  const prices = weekdayFiltered.map((row) => row.close)
 
   let reindexed: number[]
 

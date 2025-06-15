@@ -23,6 +23,18 @@ interface AssetData {
   eventPrice: number
 }
 
+interface ComprehensiveData {
+  dates: string[]
+  daysFromStart: number[]
+  assetData: Record<string, { prices: number[]; reindexed: number[] }>
+}
+
+interface PriceChange {
+  days: number
+  date: string | null
+  changes: Record<string, { absolute: number; percentage: number; value: number; rawValue: number } | null>
+}
+
 const ASSET_COLORS = {
   "S&P 500": "#2563eb",
   "WTI Crude Oil": "#dc2626",
@@ -81,6 +93,144 @@ export function EventChart({ event }: EventChartProps) {
     setSelectedAssets(newSelected)
   }
 
+  const calculateDaysFromStart = (currentDate: string, eventDate: string): number => {
+    const current = new Date(currentDate)
+    const event = new Date(eventDate)
+    const diffTime = current.getTime() - event.getTime()
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24))
+    return diffDays
+  }
+
+  const generateComprehensiveData = (): ComprehensiveData | null => {
+    if (!assetData) return null
+
+    // Generate all calendar days from -30 to +60
+    const eventDate = new Date(event.date)
+    const allDates: string[] = []
+    const daysFromStart: number[] = []
+
+    for (let i = -30; i <= 60; i++) {
+      const date = new Date(eventDate)
+      date.setDate(eventDate.getDate() + i)
+      allDates.push(date.toISOString().split("T")[0])
+      daysFromStart.push(i)
+    }
+
+    const comprehensiveAssetData: Record<string, { prices: number[]; reindexed: number[] }> = {}
+
+    // For each asset, create comprehensive data with forward fill
+    Object.entries(assetData).forEach(([assetName, data]) => {
+      const comprehensivePrices: number[] = []
+      const comprehensiveReindexed: number[] = []
+
+      let lastKnownPrice = data.prices[0] || 100 // Fallback price
+      let lastKnownReindexed = data.reindexed[0] || 100 // Fallback reindexed
+
+      allDates.forEach((date) => {
+        // Find if we have data for this date
+        const dataIndex = data.dates.findIndex((d) => d === date)
+
+        if (dataIndex !== -1) {
+          // We have data for this date
+          lastKnownPrice = data.prices[dataIndex]
+          lastKnownReindexed = data.reindexed[dataIndex]
+        }
+        // If no data, use last known values (forward fill)
+
+        comprehensivePrices.push(lastKnownPrice)
+        comprehensiveReindexed.push(lastKnownReindexed)
+      })
+
+      comprehensiveAssetData[assetName] = {
+        prices: comprehensivePrices,
+        reindexed: comprehensiveReindexed,
+      }
+    })
+
+    return {
+      dates: allDates,
+      daysFromStart,
+      assetData: comprehensiveAssetData,
+    }
+  }
+
+  const calculatePriceChanges = (): PriceChange[] => {
+    const comprehensiveData = generateComprehensiveData()
+    if (!comprehensiveData) return []
+
+    const intervals = [5, 10, 20, 40, 60]
+    const changes: PriceChange[] = []
+
+    // Find event date index (should be at day 0)
+    const eventIndex = comprehensiveData.daysFromStart.findIndex((day) => day === 0)
+    if (eventIndex === -1) return []
+
+    intervals.forEach((days) => {
+      const targetIndex = comprehensiveData.daysFromStart.findIndex((day) => day === days)
+
+      if (targetIndex === -1) {
+        // Add entry with null data
+        const assetChanges: Record<
+          string,
+          { absolute: number; percentage: number; value: number; rawValue: number } | null
+        > = {}
+        Object.keys(comprehensiveData.assetData).forEach((assetName) => {
+          assetChanges[assetName] = null
+        })
+
+        changes.push({
+          days,
+          date: null,
+          changes: assetChanges,
+        })
+        return
+      }
+
+      const targetDate = comprehensiveData.dates[targetIndex]
+      const assetChanges: Record<
+        string,
+        { absolute: number; percentage: number; value: number; rawValue: number } | null
+      > = {}
+
+      Object.entries(comprehensiveData.assetData).forEach(([assetName, data]) => {
+        const reindexedValue = data.reindexed[targetIndex]
+        const rawValue = data.prices[targetIndex]
+        const absolute = reindexedValue - 100
+        const percentage = reindexedValue / 100 - 1
+
+        assetChanges[assetName] = {
+          absolute,
+          percentage: percentage * 100,
+          value: reindexedValue,
+          rawValue: rawValue,
+        }
+      })
+
+      changes.push({
+        days,
+        date: targetDate,
+        changes: assetChanges,
+      })
+    })
+
+    return changes
+  }
+
+  const formatRawValue = (rawValue: number, assetName: string): string => {
+    if (assetName === "10Y Treasury Yield") {
+      return `${rawValue.toFixed(3)}%`
+    } else if (assetName === "S&P 500") {
+      return rawValue.toFixed(0)
+    } else if (assetName === "WTI Crude Oil") {
+      return `$${rawValue.toFixed(2)}`
+    } else if (assetName === "Gold") {
+      return `$${rawValue.toFixed(0)}`
+    } else if (assetName === "Dollar Index") {
+      return rawValue.toFixed(2)
+    }
+    return rawValue.toFixed(2)
+  }
+
   if (loading) {
     return (
       <Card>
@@ -124,13 +274,13 @@ export function EventChart({ event }: EventChartProps) {
         color: ASSET_COLORS[assetName as keyof typeof ASSET_COLORS] || "#6b7280",
         width: 2,
       },
-      hovertemplate: `<b>${assetName}</b><br>%{x}<br>Index: %{y:.2f}<extra></extra>`,
+      hoverinfo: "skip" as const, // Remove hover functionality
     }))
 
   // Add event date vertical line
   const eventTrace = {
     x: [event.date, event.date],
-    y: [95, 105], // Fixed range for visibility
+    y: [50, 150], // Extended range for full visibility
     type: "scatter" as const,
     mode: "lines" as const,
     name: "Event Date",
@@ -140,6 +290,8 @@ export function EventChart({ event }: EventChartProps) {
   }
 
   const allTraces = [...chartTraces, eventTrace]
+  const priceChanges = calculatePriceChanges()
+  const comprehensiveData = generateComprehensiveData()
 
   return (
     <div className="space-y-6">
@@ -188,8 +340,9 @@ export function EventChart({ event }: EventChartProps) {
                 },
                 yaxis: {
                   title: "Reindexed Value (Event Date = 100)",
+                  range: [80, 120], // Set visible range from 80 to 120
                 },
-                hovermode: "x unified",
+                hovermode: "closest",
                 showlegend: true,
                 legend: {
                   orientation: "h",
@@ -223,87 +376,210 @@ export function EventChart({ event }: EventChartProps) {
         </CardContent>
       </Card>
 
-      {/* Multi-Asset Data Table */}
+      {/* Price Changes Summary Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Multi-Asset Data Table</CardTitle>
-          <CardDescription>Raw prices and reindexed values for all assets during the analysis period</CardDescription>
+          <CardTitle>Post-Event Price Changes Summary</CardTitle>
+          <CardDescription>
+            Percentage changes relative to event date baseline (100). Raw values shown in parentheses. Based on
+            comprehensive calendar data.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="max-h-96 overflow-auto">
+          <div className="overflow-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date</TableHead>
+                  <TableHead className="sticky left-0 bg-white z-10 border-r">Period</TableHead>
+                  <TableHead className="sticky left-16 bg-white z-10 border-r">Date</TableHead>
                   {Object.keys(assetData).map((assetName) => (
-                    <TableHead key={`${assetName}-raw`} className="text-center">
+                    <TableHead key={assetName} className="text-center min-w-32">
                       {assetName}
                       <br />
-                      <span className="text-xs text-gray-500">Raw</span>
-                    </TableHead>
-                  ))}
-                  {Object.keys(assetData).map((assetName) => (
-                    <TableHead key={`${assetName}-reindexed`} className="text-center">
-                      {assetName}
-                      <br />
-                      <span className="text-xs text-gray-500">Reindexed</span>
+                      <span className="text-xs text-gray-500">% Change (Raw)</span>
                     </TableHead>
                   ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {assetData["S&P 500"]?.dates.map((date, index) => {
-                  const isEventDate = date === event.date
-
-                  return (
-                    <TableRow key={date} className={isEventDate ? "bg-red-50" : ""}>
-                      <TableCell className="font-medium">
-                        {date}
-                        {isEventDate && (
-                          <Badge variant="destructive" className="ml-2 text-xs">
-                            Event
-                          </Badge>
-                        )}
-                      </TableCell>
-
-                      {/* Raw Prices */}
-                      {Object.entries(assetData).map(([assetName, data]) => (
-                        <TableCell key={`${assetName}-raw-${index}`} className="text-center">
-                          {data.prices[index]?.toFixed(assetName === "10Y Treasury Yield" ? 3 : 2) || "N/A"}
-                          {assetName === "10Y Treasury Yield" && "%"}
-                        </TableCell>
-                      ))}
-
-                      {/* Reindexed Values */}
-                      {Object.entries(assetData).map(([assetName, data]) => {
-                        const reindexedValue = data.reindexed[index]
-                        const change = reindexedValue - 100
-
+                {priceChanges.map((change) => (
+                  <TableRow key={change.days}>
+                    <TableCell className="sticky left-0 bg-white z-10 border-r font-medium">
+                      +{change.days} days
+                    </TableCell>
+                    <TableCell className="sticky left-16 bg-white z-10 border-r text-sm">
+                      {change.date || "N/A"}
+                    </TableCell>
+                    {Object.entries(assetData).map(([assetName, _]) => {
+                      const assetChange = change.changes[assetName]
+                      if (!assetChange) {
                         return (
-                          <TableCell key={`${assetName}-reindexed-${index}`} className="text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <span>{reindexedValue?.toFixed(2) || "N/A"}</span>
-                              {!isEventDate && change !== 0 && (
-                                <span className={`text-xs ${change > 0 ? "text-green-600" : "text-red-600"}`}>
-                                  {change > 0 ? (
-                                    <TrendingUp className="h-3 w-3" />
-                                  ) : (
-                                    <TrendingDown className="h-3 w-3" />
-                                  )}
-                                </span>
-                              )}
-                            </div>
+                          <TableCell key={assetName} className="text-center text-gray-400">
+                            N/A
                           </TableCell>
                         )
-                      })}
-                    </TableRow>
-                  )
-                })}
+                      }
+
+                      const isPositive = assetChange.percentage > 0
+                      const isNegative = assetChange.percentage < 0
+
+                      return (
+                        <TableCell key={assetName} className="text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            <span
+                              className={`font-medium ${
+                                isPositive ? "text-green-600" : isNegative ? "text-red-600" : "text-gray-600"
+                              }`}
+                            >
+                              {isPositive ? "+" : ""}
+                              {assetChange.percentage.toFixed(2)}%
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              ({formatRawValue(assetChange.rawValue, assetName)})
+                            </span>
+                            <span className="text-xs">
+                              {isPositive ? (
+                                <TrendingUp className="h-3 w-3 text-green-600" />
+                              ) : isNegative ? (
+                                <TrendingDown className="h-3 w-3 text-red-600" />
+                              ) : null}
+                            </span>
+                          </div>
+                        </TableCell>
+                      )
+                    })}
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </div>
         </CardContent>
       </Card>
+
+      {/* Comprehensive Calendar Data Table */}
+      {comprehensiveData && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Complete Calendar Data Table</CardTitle>
+            <CardDescription>
+              All calendar days from -30d to +60d including weekends. Missing prices forward-filled from previous day.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="max-h-96 overflow-auto">
+              <style jsx>{`
+                .frozen-table {
+                  position: relative;
+                }
+                .frozen-table th:first-child,
+                .frozen-table td:first-child {
+                  position: sticky;
+                  left: 0;
+                  background: white;
+                  z-index: 10;
+                  border-right: 1px solid #e5e7eb;
+                }
+                .frozen-table th:nth-child(2),
+                .frozen-table td:nth-child(2) {
+                  position: sticky;
+                  left: 80px;
+                  background: white;
+                  z-index: 10;
+                  border-right: 1px solid #e5e7eb;
+                }
+                .frozen-table thead th {
+                  position: sticky;
+                  top: 0;
+                  background: white;
+                  z-index: 20;
+                  border-bottom: 1px solid #e5e7eb;
+                }
+                .frozen-table th:first-child,
+                .frozen-table th:nth-child(2) {
+                  z-index: 30;
+                }
+              `}</style>
+              <Table className="frozen-table">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-20">Date</TableHead>
+                    <TableHead className="min-w-16 text-center">Days</TableHead>
+                    {Object.keys(comprehensiveData.assetData).map((assetName) => (
+                      <TableHead key={`${assetName}-raw`} className="text-center min-w-24">
+                        {assetName}
+                        <br />
+                        <span className="text-xs text-gray-500">Raw</span>
+                      </TableHead>
+                    ))}
+                    {Object.keys(comprehensiveData.assetData).map((assetName) => (
+                      <TableHead key={`${assetName}-reindexed`} className="text-center min-w-24">
+                        {assetName}
+                        <br />
+                        <span className="text-xs text-gray-500">Reindexed</span>
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {comprehensiveData.dates.map((date, index) => {
+                    const isEventDate = comprehensiveData.daysFromStart[index] === 0
+                    const daysFromStart = comprehensiveData.daysFromStart[index]
+
+                    return (
+                      <TableRow key={date} className={isEventDate ? "bg-red-50" : ""}>
+                        <TableCell className="font-medium">
+                          {date}
+                          {isEventDate && (
+                            <Badge variant="destructive" className="ml-2 text-xs">
+                              Event
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center font-mono text-sm">
+                          <span className={isEventDate ? "font-bold text-red-600" : ""}>
+                            {daysFromStart === 0 ? "0d" : `${daysFromStart > 0 ? "+" : ""}${daysFromStart}d`}
+                          </span>
+                        </TableCell>
+
+                        {/* Raw Prices */}
+                        {Object.entries(comprehensiveData.assetData).map(([assetName, data]) => (
+                          <TableCell key={`${assetName}-raw-${index}`} className="text-center">
+                            {data.prices[index]?.toFixed(assetName === "10Y Treasury Yield" ? 3 : 2) || "N/A"}
+                            {assetName === "10Y Treasury Yield" && "%"}
+                          </TableCell>
+                        ))}
+
+                        {/* Reindexed Values */}
+                        {Object.entries(comprehensiveData.assetData).map(([assetName, data]) => {
+                          const reindexedValue = data.reindexed[index]
+                          const change = reindexedValue - 100
+
+                          return (
+                            <TableCell key={`${assetName}-reindexed-${index}`} className="text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <span>{reindexedValue?.toFixed(2) || "N/A"}</span>
+                                {!isEventDate && change !== 0 && (
+                                  <span className={`text-xs ${change > 0 ? "text-green-600" : "text-red-600"}`}>
+                                    {change > 0 ? (
+                                      <TrendingUp className="h-3 w-3" />
+                                    ) : (
+                                      <TrendingDown className="h-3 w-3" />
+                                    )}
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                          )
+                        })}
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
