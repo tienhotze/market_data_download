@@ -21,13 +21,14 @@ export async function POST(request: NextRequest) {
       newsData = await fetchYahooNews(ticker)
       newsSource = "Yahoo Finance"
     } catch (error) {
-      console.log("Yahoo news failed, using mock data:", error)
-      newsData = generateMockNews(ticker)
+      console.log("Yahoo news failed:", error)
+      newsData = []
+      newsSource = "None"
     }
 
-    // Skip Yahoo research API due to 401 errors, use mock data directly
-    console.log("Using mock research data due to API limitations")
-    researchData = generateMockResearch(ticker)
+    // Try to fetch real research data (currently not implemented)
+    console.log("Research API not implemented - no data available")
+    researchData = []
 
     return NextResponse.json({
       news: newsData,
@@ -35,10 +36,8 @@ export async function POST(request: NextRequest) {
       ticker,
       sources: {
         news: newsSource,
-        research: researchSource,
+        research: "None",
       },
-      warning:
-        newsSource === "Mock" || researchSource === "Mock" ? "Some data is mock due to API limitations" : undefined,
     })
   } catch (error) {
     console.error("Fetch docs error:", error)
@@ -78,44 +77,5 @@ async function fetchYahooNews(symbol: string) {
     publishedAt: new Date((item.providerPublishTime || Date.now() / 1000) * 1000).toISOString(),
     url: item.link || "",
     summary: item.summary || "No summary available",
-  }))
-}
-
-function generateMockNews(ticker: string) {
-  const newsTemplates = [
-    `${ticker} Reports Strong Quarterly Earnings Beat`,
-    `Analysts Upgrade ${ticker} Price Target on Growth Outlook`,
-    `${ticker} Announces Strategic Partnership Deal`,
-    `Market Volatility Impacts ${ticker} Trading Volume`,
-    `${ticker} CEO Discusses Future Innovation Plans`,
-    `Institutional Investors Increase ${ticker} Holdings`,
-    `${ticker} Dividend Announcement Boosts Investor Confidence`,
-    `Technical Analysis: ${ticker} Shows Bullish Pattern`,
-  ]
-
-  const publishers = ["Reuters", "Bloomberg", "CNBC", "MarketWatch", "Yahoo Finance", "Seeking Alpha"]
-
-  return newsTemplates.slice(0, 6).map((title, index) => ({
-    id: `mock_news_${index}`,
-    title,
-    publisher: publishers[index % publishers.length],
-    publishedAt: new Date(Date.now() - index * 24 * 60 * 60 * 1000).toISOString(),
-    url: `https://example.com/news/${ticker.toLowerCase()}-${index}`,
-    summary: `This is a mock news summary about ${ticker}. In a real implementation, this would contain actual news content from financial news sources.`,
-  }))
-}
-
-function generateMockResearch(ticker: string) {
-  const firms = ["Goldman Sachs", "Morgan Stanley", "JP Morgan", "Bank of America", "Citigroup", "Wells Fargo"]
-  const grades = ["Strong Buy", "Buy", "Hold", "Outperform", "Neutral", "Overweight"]
-  const previousGrades = ["Hold", "Buy", "Neutral", "Underweight", "Sell", "Hold"]
-
-  return firms.slice(0, 5).map((firm, index) => ({
-    id: `mock_research_${index}`,
-    title: `${firm} - ${grades[index % grades.length]}`,
-    publisher: firm,
-    publishedAt: new Date(Date.now() - index * 7 * 24 * 60 * 60 * 1000).toISOString(),
-    url: "",
-    summary: `Grade: ${grades[index % grades.length]}, Previous: ${previousGrades[index % previousGrades.length]}. Price target updated based on recent performance analysis.`,
   }))
 }
