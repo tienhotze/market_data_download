@@ -12,6 +12,7 @@
     "@radix-ui/react-collapsible": "latest",
     "@radix-ui/react-dialog": "latest",
     "@radix-ui/react-label": "latest",
+    "@radix-ui/react-select": "latest",
     "@radix-ui/react-tabs": "latest",
     "@radix-ui/react-toast": "latest",
     "@types/plotly.js": "^2.12.29",

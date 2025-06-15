@@ -39,7 +39,7 @@ export function calculateStandardDeviation(prices: number[], period: number): (n
   return stdDev
 }
 
-export function calculateBollingerBands(prices: number[], period = 20, multiplier = 2) {
+export function calculateBollingerBands(prices: number[], period = 21, multiplier = 2) {
   const sma = calculateSMA(prices, period)
   const stdDev = calculateStandardDeviation(prices, period)
 
@@ -83,15 +83,15 @@ export function calculateRSI(prices: number[], period = 14): (number | null)[] {
   return rsi
 }
 
-export function prepareTechnicalData(priceData: any[], period = 20): TechnicalData[] {
+export function prepareTechnicalData(priceData: any[], maPeriod = 21, rsiPeriod = 14): TechnicalData[] {
   // Sort by date ascending for calculations
   const sortedData = [...priceData].sort((a, b) => new Date(a.Date).getTime() - new Date(b.Date).getTime())
 
   const prices = sortedData.map((d) => d.Close)
   const dates = sortedData.map((d) => d.Date)
 
-  const { sma, upperBand, lowerBand } = calculateBollingerBands(prices, period)
-  const rsi = calculateRSI(prices, 14)
+  const { sma, upperBand, lowerBand } = calculateBollingerBands(prices, maPeriod)
+  const rsi = calculateRSI(prices, rsiPeriod)
 
   return sortedData.map((item, index) => ({
     date: item.Date,

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Loader2, Settings } from "lucide-react"
 import dynamic from "next/dynamic"
@@ -21,6 +22,14 @@ interface ChartsTabProps {
   period?: string
 }
 
+interface ChartSettings {
+  chartType: "ohlc" | "line"
+  movingAveragePeriod: number
+  rsiPeriod: number
+  showMovingAverage: boolean
+  showBollingerBands: boolean
+}
+
 interface AxisSettings {
   priceMin: string
   priceMax: string
@@ -31,6 +40,14 @@ interface AxisSettings {
 }
 
 export function ChartsTab({ ticker, pricesData, loading, period = "1mo" }: ChartsTabProps) {
+  const [chartSettings, setChartSettings] = useState<ChartSettings>({
+    chartType: "ohlc",
+    movingAveragePeriod: 21,
+    rsiPeriod: 14,
+    showMovingAverage: true,
+    showBollingerBands: true,
+  })
+
   const [axisSettings, setAxisSettings] = useState<AxisSettings>({
     priceMin: "",
     priceMax: "",
@@ -41,23 +58,19 @@ export function ChartsTab({ ticker, pricesData, loading, period = "1mo" }: Chart
   })
 
   const chartData = useMemo(() => {
-    if (!pricesData || pricesData.length === 0) return { technicalData: [] }
+    if (!pricesData || pricesData.length === 0) return { technicalData: [], ohlcData: [] }
 
-    // Determine period for moving averages
-    const periodDays = {
-      "1mo": 20,
-      "2mo": 20,
-      "3mo": 20,
-      "6mo": 50,
-      "1y": 50,
-      "2y": 100,
-      "5y": 200,
-      "10y": 200,
-      max: 200,
-    }
+    const technicalData = prepareTechnicalData(pricesData, chartSettings.movingAveragePeriod, chartSettings.rsiPeriod)
 
-    const movingAveragePeriod = periodDays[period as keyof typeof periodDays] || 20
-    const technicalData = prepareTechnicalData(pricesData, movingAveragePeriod)
+    // Prepare OHLC data
+    const sortedPrices = [...pricesData].sort((a, b) => new Date(a.Date).getTime() - new Date(b.Date).getTime())
+    const ohlcData = sortedPrices.map((item) => ({
+      date: item.Date,
+      open: item.Open,
+      high: item.High,
+      low: item.Low,
+      close: item.Close,
+    }))
 
     // Set default axis values if not set
     if (!axisSettings.dateMin && technicalData.length > 0) {
@@ -74,8 +87,12 @@ export function ChartsTab({ ticker, pricesData, loading, period = "1mo" }: Chart
       }))
     }
 
-    return { technicalData }
-  }, [pricesData, period, axisSettings.dateMin])
+    return { technicalData, ohlcData }
+  }, [pricesData, chartSettings.movingAveragePeriod, chartSettings.rsiPeriod, axisSettings.dateMin])
+
+  const handleChartSettingsUpdate = (newSettings: ChartSettings) => {
+    setChartSettings(newSettings)
+  }
 
   const handleAxisUpdate = (newSettings: AxisSettings) => {
     setAxisSettings(newSettings)
@@ -107,7 +124,14 @@ export function ChartsTab({ ticker, pricesData, loading, period = "1mo" }: Chart
   }
 
   // Filter technical data based on axis settings
-  const filteredData = chartData.technicalData.filter((d) => {
+  const filteredTechnicalData = chartData.technicalData.filter((d) => {
+    const date = new Date(d.date)
+    const minDate = axisSettings.dateMin ? new Date(axisSettings.dateMin) : new Date(0)
+    const maxDate = axisSettings.dateMax ? new Date(axisSettings.dateMax) : new Date()
+    return date >= minDate && date <= maxDate
+  })
+
+  const filteredOhlcData = chartData.ohlcData.filter((d) => {
     const date = new Date(d.date)
     const minDate = axisSettings.dateMin ? new Date(axisSettings.dateMin) : new Date(0)
     const maxDate = axisSettings.dateMax ? new Date(axisSettings.dateMax) : new Date()
@@ -115,69 +139,100 @@ export function ChartsTab({ ticker, pricesData, loading, period = "1mo" }: Chart
   })
 
   // Prepare data for Plotly
-  const dates = filteredData.map((d) => d.date)
-  const prices = filteredData.map((d) => d.price)
-  const sma = filteredData.map((d) => d.sma)
-  const upperBand = filteredData.map((d) => d.upperBand)
-  const lowerBand = filteredData.map((d) => d.lowerBand)
-  const rsi = filteredData.map((d) => d.rsi).filter((r) => r !== null)
-  const rsiDates = filteredData.filter((d) => d.rsi !== null).map((d) => d.date)
+  const dates = filteredTechnicalData.map((d) => d.date)
+  const prices = filteredTechnicalData.map((d) => d.price)
+  const sma = filteredTechnicalData.map((d) => d.sma)
+  const upperBand = filteredTechnicalData.map((d) => d.upperBand)
+  const lowerBand = filteredTechnicalData.map((d) => d.lowerBand)
+  const rsi = filteredTechnicalData.map((d) => d.rsi).filter((r) => r !== null)
+  const rsiDates = filteredTechnicalData.filter((d) => d.rsi !== null).map((d) => d.date)
+
+  // Prepare chart traces based on chart type
+  const priceTraces = []
+
+  if (chartSettings.chartType === "ohlc") {
+    // OHLC Candlestick Chart
+    priceTraces.push({
+      x: filteredOhlcData.map((d) => d.date),
+      open: filteredOhlcData.map((d) => d.open),
+      high: filteredOhlcData.map((d) => d.high),
+      low: filteredOhlcData.map((d) => d.low),
+      close: filteredOhlcData.map((d) => d.close),
+      type: "candlestick" as const,
+      name: "OHLC",
+      increasing: { line: { color: "#16a34a" } },
+      decreasing: { line: { color: "#dc2626" } },
+      hovertemplate:
+        "<b>OHLC</b><br>Date: %{x}<br>Open: %{open:.2f}<br>High: %{high:.2f}<br>Low: %{low:.2f}<br>Close: %{close:.2f}<extra></extra>",
+    })
+  } else {
+    // Line Chart
+    priceTraces.push({
+      x: dates,
+      y: prices,
+      type: "scatter" as const,
+      mode: "lines" as const,
+      name: "Price",
+      line: { color: "#2563eb", width: 2 },
+      hovertemplate: "<b>Price</b><br>Date: %{x}<br>Price: %{y:.2f}<extra></extra>",
+    })
+  }
+
+  // Add technical indicators if enabled
+  if (chartSettings.showMovingAverage) {
+    priceTraces.push({
+      x: dates,
+      y: sma,
+      type: "scatter" as const,
+      mode: "lines" as const,
+      name: `MA (${chartSettings.movingAveragePeriod})`,
+      line: { color: "#dc2626", width: 1, dash: "dash" },
+      hovertemplate: `<b>MA (${chartSettings.movingAveragePeriod})</b><br>Date: %{x}<br>MA: %{y:.2f}<extra></extra>`,
+    })
+  }
+
+  if (chartSettings.showBollingerBands) {
+    priceTraces.push(
+      {
+        x: dates,
+        y: upperBand,
+        type: "scatter" as const,
+        mode: "lines" as const,
+        name: "Upper Band (+2σ)",
+        line: { color: "#16a34a", width: 1, dash: "dot" },
+        hovertemplate: "<b>Upper Band</b><br>Date: %{x}<br>Upper Band: %{y:.2f}<extra></extra>",
+      },
+      {
+        x: dates,
+        y: lowerBand,
+        type: "scatter" as const,
+        mode: "lines" as const,
+        name: "Lower Band (-2σ)",
+        line: { color: "#16a34a", width: 1, dash: "dot" },
+        hovertemplate: "<b>Lower Band</b><br>Date: %{x}<br>Lower Band: %{y:.2f}<extra></extra>",
+      },
+    )
+  }
 
   return (
     <div className="space-y-6">
       {/* Price Chart with Technical Indicators */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Price Chart with Technical Analysis - {ticker.symbol}</CardTitle>
-          <AxisControlDialog axisSettings={axisSettings} onUpdate={handleAxisUpdate} />
+          <CardTitle>
+            {chartSettings.chartType === "ohlc" ? "OHLC" : "Price"} Chart with Technical Analysis - {ticker.symbol}
+          </CardTitle>
+          <div className="flex gap-2">
+            <ChartSettingsDialog chartSettings={chartSettings} onUpdate={handleChartSettingsUpdate} />
+            <AxisControlDialog axisSettings={axisSettings} onUpdate={handleAxisUpdate} />
+          </div>
         </CardHeader>
         <CardContent>
           <div style={{ width: "100%", height: "600px" }}>
             <Plot
-              data={[
-                // Price line
-                {
-                  x: dates,
-                  y: prices,
-                  type: "scatter",
-                  mode: "lines",
-                  name: "Price",
-                  line: { color: "#2563eb", width: 2 },
-                  hovertemplate: "<b>%{fullData.name}</b><br>Date: %{x}<br>Price: %{y:.2f}<extra></extra>",
-                },
-                // Moving Average
-                {
-                  x: dates,
-                  y: sma,
-                  type: "scatter",
-                  mode: "lines",
-                  name: "Moving Average",
-                  line: { color: "#dc2626", width: 1, dash: "dash" },
-                  hovertemplate: "<b>%{fullData.name}</b><br>Date: %{x}<br>SMA: %{y:.2f}<extra></extra>",
-                },
-                // Upper Bollinger Band
-                {
-                  x: dates,
-                  y: upperBand,
-                  type: "scatter",
-                  mode: "lines",
-                  name: "Upper Band (+2σ)",
-                  line: { color: "#16a34a", width: 1, dash: "dot" },
-                  hovertemplate: "<b>%{fullData.name}</b><br>Date: %{x}<br>Upper Band: %{y:.2f}<extra></extra>",
-                },
-                // Lower Bollinger Band
-                {
-                  x: dates,
-                  y: lowerBand,
-                  type: "scatter",
-                  mode: "lines",
-                  name: "Lower Band (-2σ)",
-                  line: { color: "#16a34a", width: 1, dash: "dot" },
-                  hovertemplate: "<b>%{fullData.name}</b><br>Date: %{x}<br>Lower Band: %{y:.2f}<extra></extra>",
-                },
-              ]}
+              data={priceTraces}
               layout={{
-                title: `${ticker.symbol} - Price Analysis`,
+                title: `${ticker.symbol} - ${chartSettings.chartType === "ohlc" ? "OHLC" : "Price"} Analysis`,
                 xaxis: {
                   title: "Date",
                   range:
@@ -222,7 +277,9 @@ export function ChartsTab({ ticker, pricesData, loading, period = "1mo" }: Chart
       {/* RSI Indicator */}
       <Card>
         <CardHeader>
-          <CardTitle>RSI (Relative Strength Index) - {ticker.symbol}</CardTitle>
+          <CardTitle>
+            RSI ({chartSettings.rsiPeriod}-day) - {ticker.symbol}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div style={{ width: "100%", height: "300px" }}>
@@ -234,9 +291,9 @@ export function ChartsTab({ ticker, pricesData, loading, period = "1mo" }: Chart
                   y: rsi,
                   type: "scatter",
                   mode: "lines",
-                  name: "RSI",
+                  name: `RSI (${chartSettings.rsiPeriod})`,
                   line: { color: "#f59e0b", width: 2 },
-                  hovertemplate: "<b>RSI</b><br>Date: %{x}<br>RSI: %{y:.2f}<extra></extra>",
+                  hovertemplate: `<b>RSI (${chartSettings.rsiPeriod})</b><br>Date: %{x}<br>RSI: %{y:.2f}<extra></extra>`,
                 },
                 // Overbought line
                 {
@@ -270,7 +327,7 @@ export function ChartsTab({ ticker, pricesData, loading, period = "1mo" }: Chart
                 },
               ]}
               layout={{
-                title: `${ticker.symbol} - RSI Indicator`,
+                title: `${ticker.symbol} - RSI (${chartSettings.rsiPeriod}-day) Indicator`,
                 xaxis: {
                   title: "Date",
                   range:
@@ -309,6 +366,133 @@ export function ChartsTab({ ticker, pricesData, loading, period = "1mo" }: Chart
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function ChartSettingsDialog({
+  chartSettings,
+  onUpdate,
+}: {
+  chartSettings: ChartSettings
+  onUpdate: (settings: ChartSettings) => void
+}) {
+  const [localSettings, setLocalSettings] = useState(chartSettings)
+
+  const handleSave = () => {
+    onUpdate(localSettings)
+  }
+
+  const handleReset = () => {
+    const resetSettings: ChartSettings = {
+      chartType: "ohlc",
+      movingAveragePeriod: 21,
+      rsiPeriod: 14,
+      showMovingAverage: true,
+      showBollingerBands: true,
+    }
+    setLocalSettings(resetSettings)
+    onUpdate(resetSettings)
+  }
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Settings className="h-4 w-4 mr-2" />
+          Chart Settings
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Chart & Technical Indicator Settings</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          {/* Chart Type */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Chart Type</Label>
+            <Select
+              value={localSettings.chartType}
+              onValueChange={(value: "ohlc" | "line") => setLocalSettings({ ...localSettings, chartType: value })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ohlc">OHLC Candlestick</SelectItem>
+                <SelectItem value="line">Line Chart</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Moving Average Period */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Moving Average & Bollinger Bands Period</Label>
+            <div className="flex items-center space-x-2">
+              <Input
+                type="number"
+                min="5"
+                max="200"
+                value={localSettings.movingAveragePeriod}
+                onChange={(e) =>
+                  setLocalSettings({ ...localSettings, movingAveragePeriod: Number.parseInt(e.target.value) || 21 })
+                }
+                className="w-20"
+              />
+              <span className="text-sm text-gray-600">days</span>
+            </div>
+          </div>
+
+          {/* RSI Period */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">RSI Period</Label>
+            <div className="flex items-center space-x-2">
+              <Input
+                type="number"
+                min="2"
+                max="50"
+                value={localSettings.rsiPeriod}
+                onChange={(e) =>
+                  setLocalSettings({ ...localSettings, rsiPeriod: Number.parseInt(e.target.value) || 14 })
+                }
+                className="w-20"
+              />
+              <span className="text-sm text-gray-600">days</span>
+            </div>
+          </div>
+
+          {/* Technical Indicators Toggle */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Technical Indicators</Label>
+            <div className="space-y-2">
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={localSettings.showMovingAverage}
+                  onChange={(e) => setLocalSettings({ ...localSettings, showMovingAverage: e.target.checked })}
+                />
+                <span className="text-sm">Show Moving Average</span>
+              </label>
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={localSettings.showBollingerBands}
+                  onChange={(e) => setLocalSettings({ ...localSettings, showBollingerBands: e.target.checked })}
+                />
+                <span className="text-sm">Show Bollinger Bands</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex justify-between pt-4">
+            <Button variant="outline" onClick={handleReset}>
+              Reset to Defaults
+            </Button>
+            <Button onClick={handleSave}>Apply Settings</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
