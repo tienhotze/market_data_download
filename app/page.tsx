@@ -10,6 +10,7 @@ import type { TickerData, NewsItem, ResearchItem } from "@/types"
 export default function Home() {
   const [selectedTicker, setSelectedTicker] = useState<TickerData | null>(null)
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null)
+  const [selectedPeriod, setSelectedPeriod] = useState("1mo")
   const [pricesData, setPricesData] = useState<any[]>([])
   const [newsData, setNewsData] = useState<NewsItem[]>([])
   const [researchData, setResearchData] = useState<ResearchItem[]>([])
@@ -36,7 +37,7 @@ export default function Home() {
             setLoading={setLoading}
           />
 
-          {selectedTicker && dateRange && (
+          {selectedTicker && (
             <DataTabs
               ticker={selectedTicker}
               dateRange={dateRange}
@@ -44,6 +45,7 @@ export default function Home() {
               newsData={newsData}
               researchData={researchData}
               loading={loading}
+              period={selectedPeriod}
             />
           )}
 

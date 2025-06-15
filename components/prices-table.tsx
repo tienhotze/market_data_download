@@ -10,12 +10,13 @@ import type { TickerData } from "@/types"
 
 interface PricesTableProps {
   ticker: TickerData
-  dateRange: { start: string; end: string }
+  dateRange: { start: string; end: string } | null
   data: any[]
   loading: boolean
+  period?: string
 }
 
-export function PricesTable({ ticker, dateRange, data, loading }: PricesTableProps) {
+export function PricesTable({ ticker, dateRange, data, loading, period = "1mo" }: PricesTableProps) {
   const [currentPage, setCurrentPage] = useState(1)
   const [saving, setSaving] = useState(false)
   const { toast } = useToast()
@@ -35,7 +36,7 @@ export function PricesTable({ ticker, dateRange, data, loading }: PricesTablePro
         body: JSON.stringify({
           ticker: ticker.symbol,
           data: data,
-          dateRange: dateRange,
+          period: period,
         }),
       })
 
@@ -86,7 +87,9 @@ export function PricesTable({ ticker, dateRange, data, loading }: PricesTablePro
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Price Data - {ticker.symbol}</CardTitle>
+        <CardTitle>
+          Price Data - {ticker.symbol} ({period || "Unknown Period"})
+        </CardTitle>
         <Button onClick={handleSaveCSV} disabled={data.length === 0 || saving} className="flex items-center gap-2">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           Save CSV
@@ -94,7 +97,14 @@ export function PricesTable({ ticker, dateRange, data, loading }: PricesTablePro
       </CardHeader>
       <CardContent>
         {data.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">No price data available for the selected date range.</div>
+          <div className="text-center py-8 text-gray-500">
+            No price data available for the selected period. This could be due to:
+            <ul className="mt-2 text-sm">
+              <li>• Invalid ticker symbol</li>
+              <li>• No trading data for the selected period</li>
+              <li>• Yahoo Finance API temporarily unavailable</li>
+            </ul>
+          </div>
         ) : (
           <>
             <div className="table-container">

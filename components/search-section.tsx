@@ -3,12 +3,11 @@
 import type React from "react"
 
 import { useState } from "react"
-import { Search, Calendar, Loader2 } from "lucide-react"
+import { Search, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
-import { formatDateForAPI, formatDateForDisplay, getQuickRangeDate } from "@/lib/date-utils"
 import { saveQueryToHistory } from "@/lib/storage"
 import type { TickerData } from "@/types"
 
@@ -24,14 +23,16 @@ interface SearchSectionProps {
   setLoading: (loading: boolean) => void
 }
 
-const QUICK_RANGES = [
-  { label: "1m", months: 1 },
-  { label: "2m", months: 2 },
-  { label: "3m", months: 3 },
-  { label: "6m", months: 6 },
-  { label: "12m", months: 12 },
-  { label: "24m", months: 24 },
-  { label: "60m", months: 60 },
+const PERIOD_OPTIONS = [
+  { label: "1 Month", value: "1mo", description: "Last 1 month" },
+  { label: "2 Months", value: "2mo", description: "Last 2 months" },
+  { label: "3 Months", value: "3mo", description: "Last 3 months" },
+  { label: "6 Months", value: "6mo", description: "Last 6 months" },
+  { label: "1 Year", value: "1y", description: "Last 1 year" },
+  { label: "2 Years", value: "2y", description: "Last 2 years" },
+  { label: "5 Years", value: "5y", description: "Last 5 years" },
+  { label: "10 Years", value: "10y", description: "Last 10 years" },
+  { label: "Max", value: "max", description: "All available data" },
 ]
 
 // Popular tickers for quick selection
@@ -63,8 +64,7 @@ export function SearchSection({
   const [searchResults, setSearchResults] = useState<TickerData[]>([])
   const [showResults, setShowResults] = useState(false)
   const [searchLoading, setSearchLoading] = useState(false)
-  const [startDate, setStartDate] = useState("")
-  const [endDate, setEndDate] = useState("")
+  const [selectedPeriod, setSelectedPeriod] = useState("1mo")
   const { toast } = useToast()
 
   // Simple search function without debouncing
@@ -132,46 +132,51 @@ export function SearchSection({
     setShowResults(false)
   }
 
-  const handleQuickRange = (months: number) => {
-    const { start, end } = getQuickRangeDate(months)
-    setStartDate(formatDateForDisplay(start))
-    setEndDate(formatDateForDisplay(end))
-    setDateRange({ start: formatDateForAPI(start), end: formatDateForAPI(end) })
-  }
-
-  const handleDateChange = () => {
-    if (startDate && endDate) {
-      const start = new Date(startDate)
-      const end = new Date(endDate)
-      setDateRange({
-        start: formatDateForAPI(start),
-        end: formatDateForAPI(end),
-      })
-    }
+  const handlePeriodSelect = (period: string) => {
+    setSelectedPeriod(period)
+    // Set a dummy date range for compatibility with existing code
+    const now = new Date()
+    const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) // 30 days ago
+    setDateRange({
+      start: start.toISOString().split("T")[0],
+      end: now.toISOString().split("T")[0],
+    })
   }
 
   const handleDownload = async () => {
-    if (!selectedTicker || !dateRange) return
+    if (!selectedTicker || !selectedPeriod) return
 
     setLoading(true)
     try {
-      // Save query to history
-      saveQueryToHistory(selectedTicker, dateRange)
+      // Save query to history with period info
+      const dummyRange = { start: `${selectedPeriod} ago`, end: "today" }
+      saveQueryToHistory(selectedTicker, dummyRange)
 
-      // Download prices
+      // Download prices using period
       const pricesResponse = await fetch("/api/download", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tickers: [selectedTicker.symbol],
-          start: dateRange.start,
-          end: dateRange.end,
+          period: selectedPeriod,
         }),
       })
 
       if (pricesResponse.ok) {
         const pricesResult = await pricesResponse.json()
+        console.log("Price data received:", pricesResult)
         setPricesData(pricesResult.data || [])
+
+        if (pricesResult.source) {
+          toast({
+            title: "Data Downloaded",
+            description: `Successfully downloaded ${pricesResult.rows || 0} data points from ${pricesResult.source}`,
+          })
+        }
+      } else {
+        const errorData = await pricesResponse.json()
+        console.error("Download error:", errorData)
+        throw new Error(errorData.error || "Failed to download prices")
       }
 
       // Fetch news and research
@@ -191,7 +196,7 @@ export function SearchSection({
     } catch (error) {
       toast({
         title: "Download Failed",
-        description: "Failed to download data. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to download data. Please try again.",
         variant: "destructive",
       })
     } finally {
@@ -256,45 +261,33 @@ export function SearchSection({
             </div>
           </div>
 
-          {/* Quick Range Buttons */}
-          <div className="flex flex-wrap gap-2">
-            <span className="text-sm font-medium text-gray-700 self-center mr-2">Quick ranges:</span>
-            {QUICK_RANGES.map((range) => (
-              <Button key={range.label} variant="outline" size="sm" onClick={() => handleQuickRange(range.months)}>
-                {range.label}
-              </Button>
-            ))}
+          {/* Period Selection */}
+          <div>
+            <span className="text-sm font-medium text-gray-700 mb-2 block">Select time period:</span>
+            <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
+              {PERIOD_OPTIONS.map((period) => (
+                <Button
+                  key={period.value}
+                  variant={selectedPeriod === period.value ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handlePeriodSelect(period.value)}
+                  className="text-xs"
+                  title={period.description}
+                >
+                  {period.label}
+                </Button>
+              ))}
+            </div>
           </div>
 
-          {/* Date Range Inputs */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  onBlur={handleDateChange}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  onBlur={handleDateChange}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-            <Button onClick={handleDownload} disabled={!selectedTicker || !dateRange || loading} className="w-full">
+          {/* Download Button */}
+          <div className="flex justify-center">
+            <Button
+              onClick={handleDownload}
+              disabled={!selectedTicker || !selectedPeriod || loading}
+              className="w-full md:w-auto px-8"
+              size="lg"
+            >
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -311,6 +304,11 @@ export function SearchSection({
             <div className="p-3 bg-blue-50 rounded-md">
               <div className="font-medium text-blue-900">{selectedTicker.symbol}</div>
               <div className="text-sm text-blue-700">{selectedTicker.name}</div>
+              {selectedPeriod && (
+                <div className="text-xs text-blue-600 mt-1">
+                  Period: {PERIOD_OPTIONS.find((p) => p.value === selectedPeriod)?.description}
+                </div>
+              )}
             </div>
           )}
         </div>
