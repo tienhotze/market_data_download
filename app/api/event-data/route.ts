@@ -75,8 +75,8 @@ export async function POST(request: NextRequest) {
             }
           } catch (yahooError) {
             console.log(`Yahoo Finance failed for ${assetName}:`, yahooError)
-            priceData = generateMockData(startDate, endDate, assetName)
-            console.log(`Using mock data for ${assetName}`)
+            // Skip this asset entirely - no mock data fallback
+            continue
           }
         }
 
@@ -87,16 +87,8 @@ export async function POST(request: NextRequest) {
         console.log(`Processed ${filteredData.dates.length} data points for ${assetName}`)
       } catch (assetError) {
         console.error(`Error processing ${assetName}:`, assetError)
-        // Generate fallback data for this asset
-        try {
-          const mockData = generateMockData(startDate, endDate, assetName)
-          const filteredData = filterAndReindexData(mockData, startDate, endDate, eventDate, assetName)
-          allAssetData[assetName] = filteredData
-          console.log(`Using fallback mock data for ${assetName}`)
-        } catch (fallbackError) {
-          console.error(`Even fallback failed for ${assetName}:`, fallbackError)
-          // Skip this asset
-        }
+        // Skip this asset entirely - no mock data fallback
+        continue
       }
     }
 
@@ -356,55 +348,6 @@ function parseCSVData(csvText: string) {
     console.error("Error parsing CSV data:", error)
     return []
   }
-}
-
-function generateMockData(startDate: Date, endDate: Date, assetName: string) {
-  console.log(`Generating mock data for ${assetName}`)
-  const data = []
-  const currentDate = new Date(startDate)
-
-  // Set realistic base prices for different assets
-  let basePrice = 4200 // S&P 500 default
-  let volatility = 0.015 // 1.5% daily volatility
-
-  switch (assetName) {
-    case "WTI Crude Oil":
-      basePrice = 75
-      volatility = 0.025
-      break
-    case "Gold":
-      basePrice = 2000
-      volatility = 0.012
-      break
-    case "Dollar Index":
-      basePrice = 103
-      volatility = 0.008
-      break
-    case "10Y Treasury Yield":
-      basePrice = 4.2
-      volatility = 0.05 // 5 basis points
-      break
-  }
-
-  while (currentDate <= endDate) {
-    // Generate data for all days (including weekends) for mock data
-    const randomChange = (Math.random() - 0.5) * volatility * 2
-    basePrice *= 1 + randomChange
-
-    data.push({
-      date: currentDate.toISOString().split("T")[0],
-      open: basePrice * 0.999,
-      high: basePrice * 1.005,
-      low: basePrice * 0.995,
-      close: basePrice,
-      volume: Math.floor(Math.random() * 1000000000),
-    })
-
-    currentDate.setDate(currentDate.getDate() + 1)
-  }
-
-  console.log(`Generated ${data.length} mock data points for ${assetName}`)
-  return data
 }
 
 async function saveDataToGitHub(ticker: string, data: any[]) {

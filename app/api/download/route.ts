@@ -51,11 +51,9 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Approach 4: Generate realistic mock data as fallback
+      // If no real data available, return error instead of mock data
       if (!yahooData || yahooData.length === 0) {
-        console.log("All external APIs failed, generating realistic mock data...")
-        yahooData = generateRealisticMockData(ticker, period, extraData)
-        dataSource = "Mock Data (External APIs unavailable)"
+        throw new Error("No data available from any source")
       }
 
       console.log(`Successfully fetched ${yahooData.length} data points for ${ticker} from ${dataSource}`)
@@ -72,18 +70,17 @@ export async function POST(request: NextRequest) {
     } catch (fetchError) {
       console.error("All fetch methods failed:", fetchError)
 
-      // Final fallback to mock data
-      const fallbackData = generateRealisticMockData(ticker, period, extraData)
-      return NextResponse.json({
-        data: fallbackData,
-        ticker,
-        period,
-        rows: fallbackData.length,
-        source: "Mock Data (Fallback)",
-        extraData,
-        warning: "External APIs unavailable, using mock data",
-        error: fetchError instanceof Error ? fetchError.message : "Unknown error",
-      })
+      // Return error instead of mock data
+      return NextResponse.json(
+        {
+          error: `Download failed: ${fetchError instanceof Error ? fetchError.message : "Unknown error"}`,
+          ticker,
+          period,
+          rows: 0,
+          source: "No data available",
+        },
+        { status: 400 },
+      )
     }
   } catch (error) {
     console.error("Download API error:", error)
@@ -305,77 +302,4 @@ function parseAlphaVantageData(data: any, period: string, extraData = false) {
   }
 
   return parsedData.sort((a, b) => new Date(b.Date).getTime() - new Date(a.Date).getTime())
-}
-
-function generateRealisticMockData(ticker: string, period: string, extraData = false) {
-  const periodDays: Record<string, number> = {
-    "1mo": 30,
-    "2mo": 60,
-    "3mo": 90,
-    "6mo": 180,
-    "1y": 365,
-    "2y": 730,
-    "5y": 1825,
-    "10y": 3650,
-    max: 3650,
-  }
-
-  let days = periodDays[period] || 30
-  if (extraData) {
-    days += 30 // Add extra month for technical indicators
-  }
-
-  const endDate = new Date()
-  const startDate = new Date(endDate.getTime() - days * 24 * 60 * 60 * 1000)
-
-  // Base prices for different asset types
-  const basePrices: Record<string, number> = {
-    AAPL: 180,
-    MSFT: 380,
-    GOOGL: 140,
-    AMZN: 150,
-    TSLA: 250,
-    META: 320,
-    NVDA: 480,
-    SPY: 450,
-    QQQ: 380,
-    "^GSPC": 4500,
-    "BTC-USD": 43000,
-    "ETH-USD": 2500,
-  }
-
-  let basePrice = basePrices[ticker] || 100
-  const data = []
-  const currentDate = new Date(startDate)
-
-  while (currentDate <= endDate) {
-    // Skip weekends for most assets (except crypto)
-    if (ticker.includes("-USD") || (currentDate.getDay() !== 0 && currentDate.getDay() !== 6)) {
-      // Generate realistic price movement
-      const volatility = ticker.includes("-USD") ? 0.05 : 0.02 // Crypto more volatile
-      const change = (Math.random() - 0.5) * volatility * 2
-      basePrice *= 1 + change
-
-      const dailyRange = basePrice * (ticker.includes("-USD") ? 0.04 : 0.015)
-      const open = basePrice + (Math.random() - 0.5) * dailyRange
-      const close = basePrice + (Math.random() - 0.5) * dailyRange
-      const high = Math.max(open, close) + Math.random() * (dailyRange / 2)
-      const low = Math.min(open, close) - Math.random() * (dailyRange / 2)
-      const volume = Math.floor(Math.random() * 50000000) + 1000000
-
-      data.push({
-        Date: currentDate.toISOString().split("T")[0],
-        Open: Math.round(open * 100) / 100,
-        High: Math.round(high * 100) / 100,
-        Low: Math.round(low * 100) / 100,
-        Close: Math.round(close * 100) / 100,
-        "Adj Close": Math.round(close * 100) / 100,
-        Volume: volume,
-      })
-    }
-
-    currentDate.setDate(currentDate.getDate() + 1)
-  }
-
-  return data.reverse() // Most recent first
 }
