@@ -28,8 +28,8 @@ export default function Home() {
             <h1 className="text-4xl font-bold text-gray-900">Market Data Downloader</h1>
             <Button
               onClick={() => router.push("/event-analysis")}
-              variant="outline"
-              className="flex items-center gap-2"
+              variant="default"
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
             >
               <TrendingUp className="h-4 w-4" />
               Event Analysis

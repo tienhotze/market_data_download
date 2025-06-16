@@ -8,12 +8,11 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Loader2, Settings } from "lucide-react"
-import dynamic from "next/dynamic"
 import { prepareTechnicalData } from "@/lib/technical-indicators"
 import type { TickerData } from "@/types"
 
-// Dynamically import Plot to avoid SSR issues
-const Plot = dynamic(() => import("react-plotly.js"), { ssr: false })
+// Direct import instead of dynamic import to avoid blob URL issues
+import Plot from "react-plotly.js"
 
 interface ChartsTabProps {
   ticker: TickerData

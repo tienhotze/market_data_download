@@ -1,4 +1,59 @@
+// lib/storage.ts
+
+// This file provides a basic storage utility.
+// It is designed to be simple and avoid any mock data or sample data fallbacks.
+
 import type { TickerData, QueryHistoryItem } from "@/types"
+
+interface StorageInterface {
+  getItem(key: string): string | null
+  setItem(key: string, value: string): void
+  removeItem(key: string): void
+  clear(): void
+}
+
+class LocalStorageWrapper implements StorageInterface {
+  private storage: Storage
+
+  constructor() {
+    this.storage = typeof window !== "undefined" ? window.localStorage : ({} as any) // Handle server-side rendering
+  }
+
+  getItem(key: string): string | null {
+    try {
+      return this.storage.getItem(key)
+    } catch (error) {
+      console.error("Error getting item from localStorage:", error)
+      return null
+    }
+  }
+
+  setItem(key: string, value: string): void {
+    try {
+      this.storage.setItem(key, value)
+    } catch (error) {
+      console.error("Error setting item in localStorage:", error)
+    }
+  }
+
+  removeItem(key: string): void {
+    try {
+      this.storage.removeItem(key)
+    } catch (error) {
+      console.error("Error removing item from localStorage:", error)
+    }
+  }
+
+  clear(): void {
+    try {
+      this.storage.clear()
+    } catch (error) {
+      console.error("Error clearing localStorage:", error)
+    }
+  }
+}
+
+export const storage = new LocalStorageWrapper()
 
 const STORAGE_KEY = "market-data-query-history"
 const RECENT_TICKERS_KEY = "market-data-recent-tickers"
