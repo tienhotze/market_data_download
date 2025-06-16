@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
     // Fetch data for all assets
     const allAssetData: Record<string, any> = {}
     let githubAvailable = true
+    const newDataToSave: Array<{ assetName: string; ticker: string; data: any[] }> = []
 
     for (const [assetName, assetTicker] of Object.entries(ASSET_TICKERS)) {
       try {
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest) {
 
         // Try to get data from GitHub repo first (only if GitHub is available)
         let priceData: any[] = []
+        let hasNewData = false
 
         if (githubAvailable) {
           try {
@@ -66,15 +68,34 @@ export async function POST(request: NextRequest) {
           try {
             const yahooData = await fetchYahooData(assetTicker, startDate, endDate)
             if (yahooData.length > 0) {
-              priceData = yahooData
-              console.log(`Fetched ${priceData.length} data points from Yahoo Finance for ${assetName}`)
+              // Check if we have new data compared to existing repo data
+              const existingDates = new Set(priceData.map((d) => d.date))
+              const newDataPoints = yahooData.filter((d) => !existingDates.has(d.date))
 
-              // Only try to save to GitHub if it's available and we have a token
-              if (githubAvailable && process.env.GITHUB_TOKEN) {
-                saveDataToGitHub(assetTicker, priceData).catch((saveError) => {
-                  console.log(`Failed to save ${assetName} to GitHub:`, saveError)
+              if (newDataPoints.length > 0) {
+                console.log(`Found ${newDataPoints.length} new data points for ${assetName}`)
+                hasNewData = true
+
+                // Combine existing and new data
+                const combinedData = [...priceData, ...newDataPoints].sort(
+                  (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+                )
+
+                // Remove duplicates
+                const uniqueData = Array.from(new Map(combinedData.map((item) => [item.date, item])).values())
+                priceData = uniqueData
+
+                // Queue this data for saving to GitHub
+                newDataToSave.push({
+                  assetName,
+                  ticker: assetTicker,
+                  data: uniqueData,
                 })
+              } else {
+                priceData = yahooData.length > priceData.length ? yahooData : priceData
               }
+
+              console.log(`Total ${priceData.length} data points for ${assetName} (${newDataPoints.length} new)`)
             } else {
               console.log(`No data returned from Yahoo Finance for ${assetName}`)
             }
@@ -95,7 +116,15 @@ export async function POST(request: NextRequest) {
             const widerData = await fetchYahooData(assetTicker, widerStartDate, widerEndDate)
             if (widerData.length > 0) {
               priceData = widerData
+              hasNewData = true
               console.log(`Fetched ${widerData.length} data points with wider range for ${assetName}`)
+
+              // Queue this data for saving to GitHub
+              newDataToSave.push({
+                assetName,
+                ticker: assetTicker,
+                data: widerData,
+              })
             }
           } catch (widerError) {
             console.log(`Wider range fetch also failed for ${assetName}:`, widerError)
@@ -129,6 +158,21 @@ export async function POST(request: NextRequest) {
           continue
         }
       }
+    }
+
+    // Save new data to GitHub in parallel (don't wait for completion to avoid blocking response)
+    if (newDataToSave.length > 0 && githubAvailable && process.env.GITHUB_TOKEN) {
+      console.log(`Saving ${newDataToSave.length} assets with new data to GitHub...`)
+
+      // Save data in background without blocking the response
+      Promise.all(newDataToSave.map(({ assetName, ticker, data }) => saveAssetDataToGitHub(assetName, ticker, data)))
+        .then((results) => {
+          const successCount = results.filter(Boolean).length
+          console.log(`GitHub save completed: ${successCount}/${newDataToSave.length} assets saved successfully`)
+        })
+        .catch((error) => {
+          console.error("Error in background GitHub save:", error)
+        })
     }
 
     console.log(`Returning data for ${Object.keys(allAssetData).length} assets`)
@@ -467,6 +511,46 @@ async function saveDataToGitHub(ticker: string, data: any[]) {
     }
   } catch (error) {
     console.error("Error saving to GitHub:", error)
+  }
+}
+
+async function saveAssetDataToGitHub(assetName: string, ticker: string, data: any[]) {
+  try {
+    console.log(`Saving ${data.length} data points to GitHub for ${assetName} (${ticker})`)
+
+    // Convert the data to the format expected by save_prices API
+    const formattedData = data.map((row) => ({
+      Date: row.date,
+      Open: row.open,
+      High: row.high,
+      Low: row.low,
+      Close: row.close,
+      "Adj Close": row.close, // Use close as adj close for simplicity
+      Volume: row.volume,
+    }))
+
+    // Use the existing save_prices API
+    const response = await fetch(`${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/save_prices`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ticker: ticker,
+        data: formattedData,
+        period: "event-analysis",
+      }),
+    })
+
+    if (response.ok) {
+      console.log(`Successfully saved ${assetName} data to GitHub`)
+      return true
+    } else {
+      const errorText = await response.text()
+      console.log(`Failed to save ${assetName} data to GitHub:`, response.status, errorText)
+      return false
+    }
+  } catch (error) {
+    console.error(`Error saving ${assetName} to GitHub:`, error)
+    return false
   }
 }
 

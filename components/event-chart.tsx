@@ -61,6 +61,7 @@ export function EventChart({ event }: EventChartProps) {
     new Set(["S&P 500", "WTI Crude Oil", "Gold", "Dollar Index", "10Y Treasury Yield", "VIX"]),
   )
   const [lastUpdate, setLastUpdate] = useState<string>("")
+  const [githubSaveStatus, setGithubSaveStatus] = useState<string>("")
 
   // Track if this is initial session load
   const isInitialLoad = useRef(true)
@@ -120,6 +121,7 @@ export function EventChart({ event }: EventChartProps) {
 
     setLoading(true)
     setError(null)
+    setGithubSaveStatus("")
 
     try {
       const response = await fetch("/api/event-data", {
@@ -147,6 +149,7 @@ export function EventChart({ event }: EventChartProps) {
 
       setAssetData(data.assets)
       setLastUpdate(new Date(now).toLocaleTimeString())
+      setGithubSaveStatus("New data saved to GitHub repository")
 
       // Mark initial load as complete
       if (isInitialLoad.current) {
@@ -393,6 +396,7 @@ export function EventChart({ event }: EventChartProps) {
             <span>Multi-Asset Impact Analysis: {event.name}</span>
             <div className="flex items-center gap-2">
               {lastUpdate && <span className="text-sm text-gray-500">Last updated: {lastUpdate}</span>}
+              {githubSaveStatus && <span className="text-xs text-green-600">{githubSaveStatus}</span>}
               <Button onClick={handleUpdate} variant="outline" size="sm" disabled={loading}>
                 <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
                 Update
