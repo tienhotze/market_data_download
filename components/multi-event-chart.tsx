@@ -782,6 +782,112 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                         })()}
                       </TableCell>
                     </TableRow>
+
+                    {/* Count of Positive Changes Row */}
+                    <TableRow className="bg-yellow-50 font-semibold">
+                      <TableCell className="font-bold">Count +ve Changes</TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const count = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[37] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v) && v > 0).length
+                          return <span className="text-blue-600">{count}</span>
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const count = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[44] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v) && v > 0).length
+                          return <span className="text-blue-600">{count}</span>
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const count = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[60] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v) && v > 0).length
+                          return <span className="text-blue-600">{count}</span>
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const count = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[90] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v) && v > 0).length
+                          return <span className="text-blue-600">{count}</span>
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const count = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[120] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v) && v > 0).length
+                          return <span className="text-blue-600">{count}</span>
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="text-gray-400">N/A</span>
+                      </TableCell>
+                    </TableRow>
+
+                    {/* Percentage of Positive Changes Row */}
+                    <TableRow className="bg-orange-50 font-semibold">
+                      <TableCell className="font-bold">% +ve Changes</TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const validValues = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[37] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v))
+                          const positiveCount = validValues.filter((v) => v > 0).length
+                          const percentage = validValues.length > 0 ? (positiveCount / validValues.length) * 100 : 0
+                          return <span className="text-blue-600">{percentage.toFixed(1)}%</span>
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const validValues = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[44] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v))
+                          const positiveCount = validValues.filter((v) => v > 0).length
+                          const percentage = validValues.length > 0 ? (positiveCount / validValues.length) * 100 : 0
+                          return <span className="text-blue-600">{percentage.toFixed(1)}%</span>
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const validValues = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[60] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v))
+                          const positiveCount = validValues.filter((v) => v > 0).length
+                          const percentage = validValues.length > 0 ? (positiveCount / validValues.length) * 100 : 0
+                          return <span className="text-blue-600">{percentage.toFixed(1)}%</span>
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const validValues = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[90] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v))
+                          const positiveCount = validValues.filter((v) => v > 0).length
+                          const percentage = validValues.length > 0 ? (positiveCount / validValues.length) * 100 : 0
+                          return <span className="text-blue-600">{percentage.toFixed(1)}%</span>
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const validValues = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[120] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v))
+                          const positiveCount = validValues.filter((v) => v > 0).length
+                          const percentage = validValues.length > 0 ? (positiveCount / validValues.length) * 100 : 0
+                          return <span className="text-blue-600">{percentage.toFixed(1)}%</span>
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="text-gray-400">N/A</span>
+                      </TableCell>
+                    </TableRow>
                   </TableBody>
                 </Table>
               </div>
