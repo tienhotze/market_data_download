@@ -1,5 +1,18 @@
 import { type NextRequest, NextResponse } from "next/server"
 
+interface RetryTracker {
+  [ticker: string]: {
+    attempts: number
+    lastAttempt: number
+    failed: boolean
+  }
+}
+
+// Global retry tracker (in production, this should be in Redis or similar)
+const retryTracker: RetryTracker = {}
+const MAX_RETRIES = 3
+const RETRY_COOLDOWN = 5 * 60 * 1000 // 5 minutes between retry cycles
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -16,61 +29,122 @@ export async function POST(request: NextRequest) {
     const { startTimestamp, endTimestamp } = getPeriodTimestamps(period, extraData)
 
     try {
+      // Check retry limits
+      const now = Date.now()
+      const tickerRetry = retryTracker[ticker] || { attempts: 0, lastAttempt: 0, failed: false }
+
+      // Reset attempts if cooldown period has passed
+      if (now - tickerRetry.lastAttempt > RETRY_COOLDOWN) {
+        tickerRetry.attempts = 0
+        tickerRetry.failed = false
+      }
+
+      // Check if we've exceeded max retries
+      if (tickerRetry.failed && tickerRetry.attempts >= MAX_RETRIES) {
+        console.log(`Ticker ${ticker} has exceeded maximum retry attempts (${MAX_RETRIES})`)
+        return NextResponse.json(
+          {
+            error: `Data unavailable: ${ticker} has exceeded maximum retry attempts (${MAX_RETRIES}). Please try again later.`,
+            ticker,
+            period,
+            rows: 0,
+            source: "Retry limit exceeded",
+            retryInfo: {
+              attempts: tickerRetry.attempts,
+              maxRetries: MAX_RETRIES,
+              nextRetryAvailable: new Date(tickerRetry.lastAttempt + RETRY_COOLDOWN).toISOString(),
+            },
+          },
+          { status: 429 },
+        )
+      }
+
+      // Update retry tracker
+      retryTracker[ticker] = {
+        attempts: tickerRetry.attempts + 1,
+        lastAttempt: now,
+        failed: false,
+      }
+
       // Try multiple approaches to fetch data
       let yahooData = null
       let dataSource = "Unknown"
+      let lastError = null
 
       // Approach 1: Try Yahoo Finance with better headers
       try {
-        console.log("Trying Yahoo Finance approach 1...")
+        console.log(
+          `Trying Yahoo Finance approach 1 for ${ticker} (attempt ${retryTracker[ticker].attempts}/${MAX_RETRIES})...`,
+        )
         yahooData = await fetchYahooFinanceV1(ticker, startTimestamp, endTimestamp)
         dataSource = "Yahoo Finance V1"
       } catch (error) {
         console.log("Yahoo Finance V1 failed:", error)
+        lastError = error
       }
 
       // Approach 2: Try alternative Yahoo Finance endpoint
       if (!yahooData || yahooData.length === 0) {
         try {
-          console.log("Trying Yahoo Finance approach 2...")
+          console.log(
+            `Trying Yahoo Finance approach 2 for ${ticker} (attempt ${retryTracker[ticker].attempts}/${MAX_RETRIES})...`,
+          )
           yahooData = await fetchYahooFinanceV2(ticker, startTimestamp, endTimestamp)
           dataSource = "Yahoo Finance V2"
         } catch (error) {
           console.log("Yahoo Finance V2 failed:", error)
+          lastError = error
         }
       }
 
       // Approach 3: Try Alpha Vantage (free tier)
       if (!yahooData || yahooData.length === 0) {
         try {
-          console.log("Trying Alpha Vantage...")
+          console.log(`Trying Alpha Vantage for ${ticker} (attempt ${retryTracker[ticker].attempts}/${MAX_RETRIES})...`)
           yahooData = await fetchAlphaVantageData(ticker, period, extraData)
           dataSource = "Alpha Vantage"
         } catch (error) {
           console.log("Alpha Vantage failed:", error)
+          lastError = error
         }
       }
 
-      // If no real data available, return error instead of mock data
-      if (!yahooData || yahooData.length === 0) {
-        throw new Error("No data available from any source")
+      // If successful, reset retry tracker
+      if (yahooData && yahooData.length > 0) {
+        retryTracker[ticker] = { attempts: 0, lastAttempt: 0, failed: false }
+        console.log(`Successfully fetched ${yahooData.length} data points for ${ticker} from ${dataSource}`)
+
+        return NextResponse.json({
+          data: yahooData,
+          ticker,
+          period,
+          rows: yahooData.length,
+          source: dataSource,
+          extraData,
+          warning: dataSource.includes("Mock") ? "Using mock data due to API limitations" : undefined,
+        })
       }
 
-      console.log(`Successfully fetched ${yahooData.length} data points for ${ticker} from ${dataSource}`)
+      // Mark as failed if we've reached max retries
+      if (retryTracker[ticker].attempts >= MAX_RETRIES) {
+        retryTracker[ticker].failed = true
+      }
 
-      return NextResponse.json({
-        data: yahooData,
-        ticker,
-        period,
-        rows: yahooData.length,
-        source: dataSource,
-        extraData,
-        warning: dataSource.includes("Mock") ? "Using mock data due to API limitations" : undefined,
-      })
+      // Return error with retry information
+      const remainingAttempts = MAX_RETRIES - retryTracker[ticker].attempts
+      throw new Error(
+        `All data sources failed for ${ticker}. ${remainingAttempts > 0 ? `${remainingAttempts} attempts remaining.` : "Maximum attempts reached."} Last error: ${lastError instanceof Error ? lastError.message : "Unknown error"}`,
+      )
     } catch (fetchError) {
-      console.error("All fetch methods failed:", fetchError)
+      console.error(
+        `Fetch failed for ${ticker} (attempt ${retryTracker[ticker]?.attempts || 0}/${MAX_RETRIES}):`,
+        fetchError,
+      )
 
-      // Return error instead of mock data
+      // Return error with retry information
+      const tickerRetry = retryTracker[ticker] || { attempts: 0, lastAttempt: 0, failed: false }
+      const remainingAttempts = MAX_RETRIES - tickerRetry.attempts
+
       return NextResponse.json(
         {
           error: `Download failed: ${fetchError instanceof Error ? fetchError.message : "Unknown error"}`,
@@ -78,8 +152,15 @@ export async function POST(request: NextRequest) {
           period,
           rows: 0,
           source: "No data available",
+          retryInfo: {
+            attempts: tickerRetry.attempts,
+            maxRetries: MAX_RETRIES,
+            remainingAttempts,
+            nextRetryAvailable:
+              remainingAttempts <= 0 ? new Date(tickerRetry.lastAttempt + RETRY_COOLDOWN).toISOString() : null,
+          },
         },
-        { status: 400 },
+        { status: remainingAttempts <= 0 ? 429 : 400 },
       )
     }
   } catch (error) {

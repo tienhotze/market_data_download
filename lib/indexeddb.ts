@@ -40,9 +40,19 @@ interface EventDataStore {
   version: number
 }
 
+interface AssetFailureInfo {
+  assetName: string
+  ticker: string
+  attempts: number
+  lastAttempt: number
+  failed: boolean
+  lastError: string
+  nextRetryAvailable: string | null
+}
+
 class EventDataDB {
   private dbName = "MarketWizardEventData"
-  private version = 2 // Increment version for schema changes
+  private version = 3 // Increment version for schema changes
   private db: IDBDatabase | null = null
 
   async init(): Promise<void> {
@@ -77,6 +87,13 @@ class EventDataDB {
         if (!db.objectStoreNames.contains("bulkEventData")) {
           const bulkStore = db.createObjectStore("bulkEventData", { keyPath: "key" })
           bulkStore.createIndex("timestamp", "timestamp", { unique: false })
+        }
+
+        // Create failure tracking store
+        if (!db.objectStoreNames.contains("assetFailures")) {
+          const failureStore = db.createObjectStore("assetFailures", { keyPath: "assetName" })
+          failureStore.createIndex("failed", "failed", { unique: false })
+          failureStore.createIndex("lastAttempt", "lastAttempt", { unique: false })
         }
       }
     })
@@ -340,21 +357,111 @@ class EventDataDB {
     })
   }
 
-  async getStorageStats(): Promise<{ assetDataCount: number; eventDataCount: number; bulkDataCount: number }> {
+  // Asset failure tracking methods
+  async storeAssetFailure(
+    assetName: string,
+    ticker: string,
+    attempts: number,
+    lastError: string,
+    nextRetryAvailable: string | null = null,
+  ): Promise<void> {
     if (!this.db) await this.init()
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(["assetPriceData", "eventData", "bulkEventData"], "readonly")
+      const transaction = this.db!.transaction(["assetFailures"], "readwrite")
+      const store = transaction.objectStore("assetFailures")
+
+      const failureInfo: AssetFailureInfo = {
+        assetName,
+        ticker,
+        attempts,
+        lastAttempt: Date.now(),
+        failed: attempts >= 3,
+        lastError,
+        nextRetryAvailable,
+      }
+
+      const request = store.put(failureInfo)
+
+      request.onerror = () => reject(request.error)
+      request.onsuccess = () => resolve()
+    })
+  }
+
+  async getAssetFailure(assetName: string): Promise<AssetFailureInfo | null> {
+    if (!this.db) await this.init()
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(["assetFailures"], "readonly")
+      const store = transaction.objectStore("assetFailures")
+      const request = store.get(assetName)
+
+      request.onerror = () => reject(request.error)
+      request.onsuccess = () => {
+        resolve(request.result || null)
+      }
+    })
+  }
+
+  async clearAssetFailure(assetName: string): Promise<void> {
+    if (!this.db) await this.init()
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(["assetFailures"], "readwrite")
+      const store = transaction.objectStore("assetFailures")
+      const request = store.delete(assetName)
+
+      request.onerror = () => reject(request.error)
+      request.onsuccess = () => resolve()
+    })
+  }
+
+  async getAllAssetFailures(): Promise<Record<string, AssetFailureInfo>> {
+    if (!this.db) await this.init()
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(["assetFailures"], "readonly")
+      const store = transaction.objectStore("assetFailures")
+      const request = store.getAll()
+
+      request.onerror = () => reject(request.error)
+      request.onsuccess = () => {
+        const results = request.result
+        const failures: Record<string, AssetFailureInfo> = {}
+
+        results.forEach((result) => {
+          failures[result.assetName] = result
+        })
+
+        resolve(failures)
+      }
+    })
+  }
+
+  async getStorageStats(): Promise<{
+    assetDataCount: number
+    eventDataCount: number
+    bulkDataCount: number
+    failureCount: number
+  }> {
+    if (!this.db) await this.init()
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(
+        ["assetPriceData", "eventData", "bulkEventData", "assetFailures"],
+        "readonly",
+      )
 
       let assetDataCount = 0
       let eventDataCount = 0
       let bulkDataCount = 0
+      let failureCount = 0
       let completed = 0
 
       const checkComplete = () => {
         completed++
-        if (completed === 3) {
-          resolve({ assetDataCount, eventDataCount, bulkDataCount })
+        if (completed === 4) {
+          resolve({ assetDataCount, eventDataCount, bulkDataCount, failureCount })
         }
       }
 
@@ -384,6 +491,15 @@ class EventDataDB {
         checkComplete()
       }
       bulkCountRequest.onerror = () => reject(bulkCountRequest.error)
+
+      // Count failures
+      const failureStore = transaction.objectStore("assetFailures")
+      const failureCountRequest = failureStore.count()
+      failureCountRequest.onsuccess = () => {
+        failureCount = failureCountRequest.result
+        checkComplete()
+      }
+      failureCountRequest.onerror = () => reject(failureCountRequest.error)
     })
   }
 }
@@ -463,11 +579,12 @@ export async function preloadEventData(events: Array<{ id: string; date: string;
   console.log("Preloading completed")
 }
 
-// Refresh all asset data using GitHub first, then Yahoo Finance
+// Refresh all asset data using GitHub first, then Yahoo Finance with retry limits
 export const refreshAllAssetData = async () => {
-  console.log("Refreshing all asset data with latest available data")
+  console.log("Refreshing all asset data with throttled Yahoo Finance calls")
 
   const refreshPromises: Promise<void>[] = []
+  const MAX_RETRIES = 3
 
   for (const assetName of ASSET_NAMES) {
     refreshPromises.push(
@@ -476,40 +593,88 @@ export const refreshAllAssetData = async () => {
           console.log(`Refreshing data for ${assetName}`)
           const ticker = ASSET_TICKERS[assetName as keyof typeof ASSET_TICKERS]
 
+          // Check if asset has failed recently
+          const failureInfo = await eventDataDB.getAssetFailure(assetName)
+          if (failureInfo && failureInfo.failed) {
+            const now = Date.now()
+            const cooldownPeriod = 5 * 60 * 1000 // 5 minutes
+
+            if (now - failureInfo.lastAttempt < cooldownPeriod) {
+              console.log(`Skipping ${assetName} - in cooldown period after ${failureInfo.attempts} failed attempts`)
+              return
+            } else {
+              // Clear old failure info after cooldown
+              await eventDataDB.clearAssetFailure(assetName)
+            }
+          }
+
           // Try to get data from GitHub first, then Yahoo Finance
-          const response = await fetch("/api/asset-data", {
+          const response = await fetch("/api/download", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              ticker,
-              assetName,
-              maxData: true,
-              forceRefresh: true,
+              tickers: [ticker],
+              period: "max",
+              extraData: false,
             }),
           })
 
           if (response.ok) {
             const data = await response.json()
 
-            if (data.priceData && data.priceData.length > 0) {
+            if (data.data && data.data.length > 0) {
               const dateRange = {
-                start: data.priceData[0].date,
-                end: data.priceData[data.priceData.length - 1].date,
+                start: data.data[0].Date,
+                end: data.data[data.data.length - 1].Date,
               }
 
-              await eventDataDB.storeAssetPriceData(assetName, ticker, data.priceData, dateRange)
+              // Convert Yahoo Finance format to our format
+              const priceData = data.data.map((row: any) => ({
+                date: row.Date,
+                open: row.Open,
+                high: row.High,
+                low: row.Low,
+                close: row.Close,
+                volume: row.Volume || 0,
+              }))
+
+              await eventDataDB.storeAssetPriceData(assetName, ticker, priceData, dateRange)
+
+              // Clear any previous failure info on success
+              await eventDataDB.clearAssetFailure(assetName)
+
               console.log(
-                `Updated cache for ${assetName}: ${data.priceData.length} data points (${dateRange.start} to ${dateRange.end})`,
+                `Updated cache for ${assetName}: ${priceData.length} data points (${dateRange.start} to ${dateRange.end}) from ${data.source}`,
               )
             } else {
               console.log(`No price data received for ${assetName}`)
             }
           } else {
-            const errorText = await response.text()
-            console.error(`Failed to refresh data for ${assetName}:`, response.status, errorText)
+            const errorData = await response.json()
+            console.error(`Failed to refresh data for ${assetName}:`, response.status, errorData)
+
+            // Track failure if it's a retry limit error
+            if (response.status === 429 && errorData.retryInfo) {
+              await eventDataDB.storeAssetFailure(
+                assetName,
+                ticker,
+                errorData.retryInfo.attempts,
+                errorData.error,
+                errorData.retryInfo.nextRetryAvailable,
+              )
+            }
           }
         } catch (error) {
           console.error(`Failed to refresh ${assetName}:`, error)
+
+          // Track unexpected failures
+          await eventDataDB.storeAssetFailure(
+            assetName,
+            ASSET_TICKERS[assetName as keyof typeof ASSET_TICKERS],
+            1,
+            error instanceof Error ? error.message : "Unknown error",
+            null,
+          )
         }
       })(),
     )
@@ -528,9 +693,9 @@ export const refreshAllAssetData = async () => {
 
     // Delay between batches
     if (i + batchSize < refreshPromises.length) {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await new Promise((resolve) => setTimeout(resolve, 2000)) // Increased delay
     }
   }
 
-  console.log("All asset data refresh completed")
+  console.log("All asset data refresh completed with throttling")
 }

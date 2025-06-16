@@ -16,7 +16,12 @@ interface AssetStatus {
   lastDate: string | null
   dataPoints: number
   cacheAge: string
-  status: "fresh" | "stale" | "missing"
+  status: "fresh" | "stale" | "missing" | "failed"
+  failureInfo?: {
+    attempts: number
+    lastError: string
+    nextRetryAvailable: string | null
+  }
 }
 
 export function AssetStatusTable() {
@@ -38,7 +43,7 @@ export function AssetStatusTable() {
     }
   }
 
-  const getStatusBadge = (status: "fresh" | "stale" | "missing") => {
+  const getStatusBadge = (status: "fresh" | "stale" | "missing" | "failed") => {
     switch (status) {
       case "fresh":
         return (
@@ -52,6 +57,13 @@ export function AssetStatusTable() {
           <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 border-yellow-200">
             <Clock className="h-3 w-3 mr-1" />
             Stale
+          </Badge>
+        )
+      case "failed":
+        return (
+          <Badge variant="destructive" className="bg-red-100 text-red-800 border-red-200">
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            Failed
           </Badge>
         )
       case "missing":
@@ -92,12 +104,32 @@ export function AssetStatusTable() {
   const loadAssetStatuses = async () => {
     try {
       const statuses: AssetStatus[] = []
+      const failures = await eventDataDB.getAllAssetFailures()
 
       for (const assetName of ASSET_NAMES) {
         const ticker = ASSET_TICKERS[assetName as keyof typeof ASSET_TICKERS]
         const assetData = await eventDataDB.getAssetPriceData(assetName)
+        const failureInfo = failures[assetName]
 
-        if (assetData && assetData.data.length > 0) {
+        if (failureInfo && failureInfo.failed) {
+          // Asset has failed
+          statuses.push({
+            name: assetName,
+            ticker,
+            lastPrice: null,
+            lastDate: null,
+            dataPoints: assetData?.data.length || 0,
+            cacheAge: failureInfo.nextRetryAvailable
+              ? `Retry available: ${new Date(failureInfo.nextRetryAvailable).toLocaleTimeString()}`
+              : `Failed ${calculateCacheAge(failureInfo.lastAttempt)}`,
+            status: "failed",
+            failureInfo: {
+              attempts: failureInfo.attempts,
+              lastError: failureInfo.lastError,
+              nextRetryAvailable: failureInfo.nextRetryAvailable,
+            },
+          })
+        } else if (assetData && assetData.data.length > 0) {
           const lastDataPoint = assetData.data[assetData.data.length - 1]
           const status = getStatus(assetData.timestamp)
 
@@ -176,6 +208,7 @@ export function AssetStatusTable() {
   const freshCount = assetStatuses.filter((asset) => asset.status === "fresh").length
   const staleCount = assetStatuses.filter((asset) => asset.status === "stale").length
   const missingCount = assetStatuses.filter((asset) => asset.status === "missing").length
+  const failedCount = assetStatuses.filter((asset) => asset.status === "failed").length
 
   return (
     <Card>
@@ -203,7 +236,7 @@ export function AssetStatusTable() {
         ) : (
           <>
             {/* Summary Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
               <div className="text-center p-3 bg-gray-50 rounded-lg">
                 <div className="text-2xl font-bold text-gray-900">{totalDataPoints.toLocaleString()}</div>
                 <div className="text-sm text-gray-600">Total Data Points</div>
@@ -217,7 +250,11 @@ export function AssetStatusTable() {
                 <div className="text-sm text-gray-600">Stale Assets</div>
               </div>
               <div className="text-center p-3 bg-red-50 rounded-lg">
-                <div className="text-2xl font-bold text-red-600">{missingCount}</div>
+                <div className="text-2xl font-bold text-red-600">{failedCount}</div>
+                <div className="text-sm text-gray-600">Failed Assets</div>
+              </div>
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <div className="text-2xl font-bold text-gray-600">{missingCount}</div>
                 <div className="text-sm text-gray-600">Missing Assets</div>
               </div>
             </div>
@@ -242,10 +279,21 @@ export function AssetStatusTable() {
                         <div>
                           <div className="font-semibold">{asset.name}</div>
                           <div className="text-xs text-gray-500">{asset.ticker}</div>
+                          {asset.failureInfo && (
+                            <div className="text-xs text-red-600 mt-1">
+                              {asset.failureInfo.attempts}/3 attempts failed
+                            </div>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="text-center">{getStatusBadge(asset.status)}</TableCell>
-                      <TableCell className="text-right font-mono">{formatPrice(asset.lastPrice, asset.name)}</TableCell>
+                      <TableCell className="text-right font-mono">
+                        {asset.status === "failed" ? (
+                          <span className="text-red-600 text-sm">API Limit</span>
+                        ) : (
+                          formatPrice(asset.lastPrice, asset.name)
+                        )}
+                      </TableCell>
                       <TableCell className="text-center">
                         {asset.lastDate ? new Date(asset.lastDate).toLocaleDateString() : "N/A"}
                       </TableCell>
@@ -262,6 +310,13 @@ export function AssetStatusTable() {
                         >
                           {asset.cacheAge}
                         </span>
+                        {asset.failureInfo && asset.failureInfo.lastError && (
+                          <div className="text-xs text-red-600 mt-1" title={asset.failureInfo.lastError}>
+                            {asset.failureInfo.lastError.length > 30
+                              ? `${asset.failureInfo.lastError.substring(0, 30)}...`
+                              : asset.failureInfo.lastError}
+                          </div>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -269,15 +324,18 @@ export function AssetStatusTable() {
               </Table>
             </div>
 
-            {/* Warning for stale data */}
-            {(staleCount > 0 || missingCount > 0) && (
+            {/* Warning for stale/failed data */}
+            {(staleCount > 0 || missingCount > 0 || failedCount > 0) && (
               <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 text-yellow-600" />
                   <span className="text-sm text-yellow-800">
+                    {failedCount > 0 ? `${failedCount} asset(s) failed after 3 attempts. ` : ""}
                     {missingCount > 0 ? `${missingCount} asset(s) missing data. ` : ""}
                     {staleCount > 0 ? `${staleCount} asset(s) have stale data. ` : ""}
-                    Consider refreshing the cache for the latest market data.
+                    {failedCount > 0
+                      ? "Failed assets are in cooldown period. Try refreshing later."
+                      : "Consider refreshing the cache for the latest market data."}
                   </span>
                 </div>
               </div>
