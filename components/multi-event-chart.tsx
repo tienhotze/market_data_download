@@ -20,7 +20,7 @@ interface EventAssetData {
   eventId: string
   eventName: string
   eventDate: string
-  reindexedData: number[] // 91 days from -30 to +60
+  reindexedData: number[] // 121 days from -30 to +90
 }
 
 interface MultiEventData {
@@ -67,7 +67,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
   // Generate day labels from -30 to +60
   const generateDayLabels = (): string[] => {
     const labels: string[] = []
-    for (let i = -30; i <= 60; i++) {
+    for (let i = -30; i <= 90; i++) {
       if (i === 0) {
         labels.push("0d")
       } else {
@@ -114,7 +114,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
         const eventDate = new Date(event.date)
         const reindexedData: number[] = []
 
-        for (let i = -30; i <= 60; i++) {
+        for (let i = -30; i <= 90; i++) {
           const targetDate = new Date(eventDate)
           targetDate.setDate(eventDate.getDate() + i)
           const targetDateStr = targetDate.toISOString().split("T")[0]
@@ -157,7 +157,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
       const averageData: number[] = []
       const medianData: number[] = []
 
-      for (let dayIndex = 0; dayIndex < 91; dayIndex++) {
+      for (let dayIndex = 0; dayIndex < 121; dayIndex++) {
         const dayValues = validEventData.map((event) => event.reindexedData[dayIndex]).filter((val) => !isNaN(val))
 
         if (dayValues.length > 0) {
@@ -512,6 +512,276 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                         </TableRow>
                       )
                     })}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Performance Summary Table */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Performance Summary</CardTitle>
+              <CardDescription>
+                Percentage changes from event start date and maximum drawdown for each event
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-48">Event</TableHead>
+                      <TableHead className="text-center min-w-20">7d %</TableHead>
+                      <TableHead className="text-center min-w-20">14d %</TableHead>
+                      <TableHead className="text-center min-w-20">30d %</TableHead>
+                      <TableHead className="text-center min-w-20">60d %</TableHead>
+                      <TableHead className="text-center min-w-20">90d %</TableHead>
+                      <TableHead className="text-center min-w-24">Max Drawdown %</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {multiEventData.eventData.map((eventData) => {
+                      const startValue = 100 // Event start date value
+                      const day7Value = eventData.reindexedData[37] // Index 37 = Day +7
+                      const day14Value = eventData.reindexedData[44] // Index 44 = Day +14
+                      const day30Value = eventData.reindexedData[60] // Index 60 = Day +30
+                      const day60Value = eventData.reindexedData[90] // Index 90 = Day +60
+                      const day90Value = eventData.reindexedData[120] // Index 120 = Day +90
+
+                      // Calculate percentage changes
+                      const day7Change = ((day7Value - startValue) / startValue) * 100
+                      const day14Change = ((day14Value - startValue) / startValue) * 100
+                      const day30Change = ((day30Value - startValue) / startValue) * 100
+                      const day60Change = ((day60Value - startValue) / startValue) * 100
+                      const day90Change = ((day90Value - startValue) / startValue) * 100
+
+                      // Calculate max drawdown from start date to day +90
+                      const postEventData = eventData.reindexedData.slice(30, 121) // From day 0 to day +90
+                      const minValue = Math.min(...postEventData)
+                      const maxDrawdown = ((minValue - startValue) / startValue) * 100
+
+                      return (
+                        <TableRow key={eventData.eventId}>
+                          <TableCell className="font-medium">
+                            <div>
+                              <div className="font-semibold">{eventData.eventName}</div>
+                              <div className="text-xs text-gray-500">{eventData.eventDate}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className={`font-medium ${day7Change >= 0 ? "text-green-600" : "text-red-600"}`}>
+                              {day7Change?.toFixed(2) || "N/A"}%
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className={`font-medium ${day14Change >= 0 ? "text-green-600" : "text-red-600"}`}>
+                              {day14Change?.toFixed(2) || "N/A"}%
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className={`font-medium ${day30Change >= 0 ? "text-green-600" : "text-red-600"}`}>
+                              {day30Change?.toFixed(2) || "N/A"}%
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className={`font-medium ${day60Change >= 0 ? "text-green-600" : "text-red-600"}`}>
+                              {day60Change?.toFixed(2) || "N/A"}%
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className={`font-medium ${day90Change >= 0 ? "text-green-600" : "text-red-600"}`}>
+                              {day90Change?.toFixed(2) || "N/A"}%
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="font-medium text-red-600">{maxDrawdown?.toFixed(2) || "N/A"}%</span>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+
+                    {/* Average Row */}
+                    <TableRow className="bg-blue-50 font-semibold">
+                      <TableCell className="font-bold">Average</TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const values = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[37] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v))
+                          const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0
+                          return <span className={avg >= 0 ? "text-green-600" : "text-red-600"}>{avg.toFixed(2)}%</span>
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const values = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[44] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v))
+                          const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0
+                          return <span className={avg >= 0 ? "text-green-600" : "text-red-600"}>{avg.toFixed(2)}%</span>
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const values = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[60] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v))
+                          const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0
+                          return <span className={avg >= 0 ? "text-green-600" : "text-red-600"}>{avg.toFixed(2)}%</span>
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const values = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[90] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v))
+                          const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0
+                          return <span className={avg >= 0 ? "text-green-600" : "text-red-600"}>{avg.toFixed(2)}%</span>
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const values = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[120] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v))
+                          const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0
+                          return <span className={avg >= 0 ? "text-green-600" : "text-red-600"}>{avg.toFixed(2)}%</span>
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const values = multiEventData.eventData
+                            .map((e) => {
+                              const postEventData = e.reindexedData.slice(30, 121)
+                              const minValue = Math.min(...postEventData)
+                              return ((minValue - 100) / 100) * 100
+                            })
+                            .filter((v) => !isNaN(v))
+                          const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0
+                          return <span className="text-red-600">{avg.toFixed(2)}%</span>
+                        })()}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* Median Row */}
+                    <TableRow className="bg-green-50 font-semibold">
+                      <TableCell className="font-bold">Median</TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const values = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[37] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v))
+                            .sort((a, b) => a - b)
+                          const median =
+                            values.length > 0
+                              ? values.length % 2 === 0
+                                ? (values[values.length / 2 - 1] + values[values.length / 2]) / 2
+                                : values[Math.floor(values.length / 2)]
+                              : 0
+                          return (
+                            <span className={median >= 0 ? "text-green-600" : "text-red-600"}>
+                              {median.toFixed(2)}%
+                            </span>
+                          )
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const values = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[44] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v))
+                            .sort((a, b) => a - b)
+                          const median =
+                            values.length > 0
+                              ? values.length % 2 === 0
+                                ? (values[values.length / 2 - 1] + values[values.length / 2]) / 2
+                                : values[Math.floor(values.length / 2)]
+                              : 0
+                          return (
+                            <span className={median >= 0 ? "text-green-600" : "text-red-600"}>
+                              {median.toFixed(2)}%
+                            </span>
+                          )
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const values = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[60] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v))
+                            .sort((a, b) => a - b)
+                          const median =
+                            values.length > 0
+                              ? values.length % 2 === 0
+                                ? (values[values.length / 2 - 1] + values[values.length / 2]) / 2
+                                : values[Math.floor(values.length / 2)]
+                              : 0
+                          return (
+                            <span className={median >= 0 ? "text-green-600" : "text-red-600"}>
+                              {median.toFixed(2)}%
+                            </span>
+                          )
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const values = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[90] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v))
+                            .sort((a, b) => a - b)
+                          const median =
+                            values.length > 0
+                              ? values.length % 2 === 0
+                                ? (values[values.length / 2 - 1] + values[values.length / 2]) / 2
+                                : values[Math.floor(values.length / 2)]
+                              : 0
+                          return (
+                            <span className={median >= 0 ? "text-green-600" : "text-red-600"}>
+                              {median.toFixed(2)}%
+                            </span>
+                          )
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const values = multiEventData.eventData
+                            .map((e) => ((e.reindexedData[120] - 100) / 100) * 100)
+                            .filter((v) => !isNaN(v))
+                            .sort((a, b) => a - b)
+                          const median =
+                            values.length > 0
+                              ? values.length % 2 === 0
+                                ? (values[values.length / 2 - 1] + values[values.length / 2]) / 2
+                                : values[Math.floor(values.length / 2)]
+                              : 0
+                          return (
+                            <span className={median >= 0 ? "text-green-600" : "text-red-600"}>
+                              {median.toFixed(2)}%
+                            </span>
+                          )
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const values = multiEventData.eventData
+                            .map((e) => {
+                              const postEventData = e.reindexedData.slice(30, 121)
+                              const minValue = Math.min(...postEventData)
+                              return ((minValue - 100) / 100) * 100
+                            })
+                            .filter((v) => !isNaN(v))
+                            .sort((a, b) => a - b)
+                          const median =
+                            values.length > 0
+                              ? values.length % 2 === 0
+                                ? (values[values.length / 2 - 1] + values[values.length / 2]) / 2
+                                : values[Math.floor(values.length / 2)]
+                              : 0
+                          return <span className="text-red-600">{median.toFixed(2)}%</span>
+                        })()}
+                      </TableCell>
+                    </TableRow>
                   </TableBody>
                 </Table>
               </div>
