@@ -6,8 +6,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Loader2, TrendingUp, TrendingDown } from "lucide-react"
+import dynamic from "next/dynamic"
 import type { EventData } from "@/types"
-import Plot from "react-plotly.js"
+
+const Plot = dynamic(() => import("react-plotly.js"), { ssr: false })
 
 interface EventChartProps {
   event: EventData

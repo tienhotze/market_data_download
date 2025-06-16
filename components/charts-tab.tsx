@@ -8,11 +8,19 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Loader2, Settings } from "lucide-react"
+import dynamic from "next/dynamic"
 import { prepareTechnicalData } from "@/lib/technical-indicators"
 import type { TickerData } from "@/types"
 
-// Direct import instead of dynamic import to avoid blob URL issues
-import Plot from "react-plotly.js"
+// Dynamically import Plot to avoid SSR issues
+const Plot = dynamic(() => import("react-plotly.js"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center py-8">
+      <Loader2 className="h-8 w-8 animate-spin" />
+    </div>
+  ),
+})
 
 interface ChartsTabProps {
   ticker: TickerData
