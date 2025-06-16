@@ -11,7 +11,7 @@ const ASSET_TICKERS = {
 
 export async function POST(request: NextRequest) {
   try {
-    const { eventDate, ticker } = await request.json()
+    const { eventDate, ticker, assetsToFetch } = await request.json()
 
     if (!eventDate) {
       return NextResponse.json({ error: "Event date is required" }, { status: 400 })
@@ -29,12 +29,22 @@ export async function POST(request: NextRequest) {
 
     console.log(`Date range: ${startDate.toISOString().split("T")[0]} to ${endDate.toISOString().split("T")[0]}`)
 
-    // Fetch data for all assets
+    // Determine which assets to fetch
+    const assetsToProcess = assetsToFetch || Object.keys(ASSET_TICKERS)
+    console.log(`Processing ${assetsToProcess.length} assets: ${assetsToProcess.join(", ")}`)
+
+    // Fetch data for requested assets only
     const allAssetData: Record<string, any> = {}
     let githubAvailable = true
     const newDataToSave: Array<{ assetName: string; ticker: string; data: any[] }> = []
 
-    for (const [assetName, assetTicker] of Object.entries(ASSET_TICKERS)) {
+    for (const assetName of assetsToProcess) {
+      const assetTicker = ASSET_TICKERS[assetName as keyof typeof ASSET_TICKERS]
+      if (!assetTicker) {
+        console.log(`Unknown asset: ${assetName}`)
+        continue
+      }
+
       try {
         console.log(`Fetching data for ${assetName} (${assetTicker})`)
 
@@ -62,11 +72,12 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // If we don't have enough data, fetch from Yahoo Finance
+        // If we don't have enough data, fetch from Yahoo Finance using 1mo period for latest data
         if (priceData.length === 0 || !hasCompleteDateRange(priceData, startDate, endDate)) {
           console.log(`Fetching data from Yahoo Finance for ${assetName}...`)
           try {
-            const yahooData = await fetchYahooData(assetTicker, startDate, endDate)
+            // Use 1mo period to get latest month data for missing data
+            const yahooData = await fetchYahooData(assetTicker, startDate, endDate, "1mo")
             if (yahooData.length > 0) {
               // Check if we have new data compared to existing repo data
               const existingDates = new Set(priceData.map((d) => d.date))
@@ -113,7 +124,7 @@ export async function POST(request: NextRequest) {
           widerEndDate.setDate(widerEndDate.getDate() + 90)
 
           try {
-            const widerData = await fetchYahooData(assetTicker, widerStartDate, widerEndDate)
+            const widerData = await fetchYahooData(assetTicker, widerStartDate, widerEndDate, "1mo")
             if (widerData.length > 0) {
               priceData = widerData
               hasNewData = true
@@ -376,13 +387,14 @@ function hasCompleteDateRange(data: any[], startDate: Date, endDate: Date): bool
   return dataStart <= bufferStart && dataEnd >= bufferEnd
 }
 
-async function fetchYahooData(ticker: string, startDate: Date, endDate: Date) {
+async function fetchYahooData(ticker: string, startDate: Date, endDate: Date, period = "1mo") {
   const startTimestamp = Math.floor(startDate.getTime() / 1000)
   const endTimestamp = Math.floor(endDate.getTime() / 1000)
 
+  // Use the period parameter for latest month data when missing data
   const url = `https://query1.finance.yahoo.com/v7/finance/download/${ticker}?period1=${startTimestamp}&period2=${endTimestamp}&interval=1d&events=history&includeAdjustedClose=true`
 
-  console.log(`Yahoo Finance URL: ${url}`)
+  console.log(`Yahoo Finance URL: ${url} (using ${period} period for latest data)`)
 
   const response = await fetch(url, {
     headers: {

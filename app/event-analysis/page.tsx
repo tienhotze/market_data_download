@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,29 +21,16 @@ import { ArrowLeft, Plus, Calendar, TrendingUp } from "lucide-react"
 import { EventChart } from "@/components/event-chart"
 import { MultiEventChart } from "@/components/multi-event-chart"
 import type { EventData } from "@/types"
+import { preloadEventData, eventDataDB } from "@/lib/indexeddb"
 
 const DEFAULT_EVENTS: EventData[] = [
-  // Original Events
+  // Sort all events by date (earliest to latest)
   {
-    id: "covid-crash",
-    name: "COVID-19 Market Crash",
-    date: "2020-02-20",
-    category: "Pandemic",
-    description: "WHO declares COVID-19 a pandemic, markets crash globally",
-  },
-  {
-    id: "fed-hikes-2022",
-    name: "Fed Rate Hikes Begin",
-    date: "2022-03-16",
-    category: "Fed",
-    description: "Federal Reserve begins aggressive interest rate hiking cycle",
-  },
-  {
-    id: "russia-ukraine",
-    name: "Russia-Ukraine War",
-    date: "2022-02-24",
+    id: "september-11",
+    name: "September 11 Attacks",
+    date: "2001-09-11",
     category: "Geopolitical",
-    description: "Russia invades Ukraine, triggering global market volatility",
+    description: "Terrorist attacks in US, markets closed for days",
   },
   {
     id: "lehman-collapse",
@@ -60,34 +47,18 @@ const DEFAULT_EVENTS: EventData[] = [
     description: "UK votes to leave European Union, causing market uncertainty",
   },
   {
-    id: "fed-emergency-cut",
-    name: "Fed Emergency Rate Cut",
-    date: "2020-03-15",
-    category: "Fed",
-    description: "Federal Reserve cuts rates to near zero in emergency meeting",
-  },
-  {
-    id: "svb-collapse",
-    name: "Silicon Valley Bank Collapse",
-    date: "2023-03-10",
-    category: "Banking",
-    description: "Silicon Valley Bank fails, triggering banking sector concerns",
-  },
-  {
-    id: "september-11",
-    name: "September 11 Attacks",
-    date: "2001-09-11",
-    category: "Geopolitical",
-    description: "Terrorist attacks in US, markets closed for days",
-  },
-
-  // Israeli Military Operations
-  {
     id: "operation-litani",
     name: "Operation Litani",
     date: "1978-03-14",
     category: "Geopolitical",
     description: "Israeli invasion of South Lebanon to push PLO north of Litani River",
+  },
+  {
+    id: "iran-iraq-war",
+    name: "Iran-Iraq War Begins",
+    date: "1980-09-22",
+    category: "Geopolitical",
+    description: "Iraq invades Iran, starting 8-year war with major oil market impacts",
   },
   {
     id: "lebanon-war-1982",
@@ -109,6 +80,13 @@ const DEFAULT_EVENTS: EventData[] = [
     date: "1996-04-11",
     category: "Geopolitical",
     description: "Massive Israeli airstrikes in Lebanon in response to Katyusha fire",
+  },
+  {
+    id: "hezbollah-raid-2006",
+    name: "Hezbollah Cross-Border Raid",
+    date: "2006-07-12",
+    category: "Geopolitical",
+    description: "Hezbollah kidnapping of Israeli soldiers sparks 2006 Lebanon War",
   },
   {
     id: "lebanon-war-2006",
@@ -139,11 +117,46 @@ const DEFAULT_EVENTS: EventData[] = [
     description: "50-day Gaza war with Israeli ground invasion against Hamas",
   },
   {
+    id: "covid-crash",
+    name: "COVID-19 Market Crash",
+    date: "2020-02-20",
+    category: "Pandemic",
+    description: "WHO declares COVID-19 a pandemic, markets crash globally",
+  },
+  {
+    id: "fed-emergency-cut",
+    name: "Fed Emergency Rate Cut",
+    date: "2020-03-15",
+    category: "Fed",
+    description: "Federal Reserve cuts rates to near zero in emergency meeting",
+  },
+  {
     id: "operation-guardian-walls",
     name: "Operation Guardian of the Walls",
     date: "2021-05-10",
     category: "Geopolitical",
     description: "11-day conflict triggered by Jerusalem tensions, Hamas rocket barrages",
+  },
+  {
+    id: "russia-ukraine",
+    name: "Russia-Ukraine War",
+    date: "2022-02-24",
+    category: "Geopolitical",
+    description: "Russia invades Ukraine, triggering global market volatility",
+  },
+  {
+    id: "fed-hikes-2022",
+    name: "Fed Rate Hikes Begin",
+    date: "2022-03-16",
+    category: "Fed",
+    description: "Federal Reserve begins aggressive interest rate hiking cycle",
+  },
+  {
+    id: "svb-collapse",
+    name: "Silicon Valley Bank Collapse",
+    date: "2023-03-10",
+    category: "Banking",
+    description: "Silicon Valley Bank fails, triggering banking sector concerns",
   },
   {
     id: "hamas-oct-7-attack",
@@ -153,36 +166,20 @@ const DEFAULT_EVENTS: EventData[] = [
     description: "Coordinated Hamas attack on Israel, triggering largest war since 1973",
   },
   {
-    id: "israel-strike-iran-2025",
-    name: "Israel Strike on Iran (Tehran)",
-    date: "2025-06-14",
-    category: "Geopolitical",
-    description: "Reported Israeli airstrikes on Iranian nuclear-linked sites",
-  },
-
-  // Iranian & Proxy Operations
-  {
-    id: "iran-iraq-war",
-    name: "Iran-Iraq War Begins",
-    date: "1980-09-22",
-    category: "Geopolitical",
-    description: "Iraq invades Iran, starting 8-year war with major oil market impacts",
-  },
-  {
-    id: "hezbollah-raid-2006",
-    name: "Hezbollah Cross-Border Raid",
-    date: "2006-07-12",
-    category: "Geopolitical",
-    description: "Hezbollah kidnapping of Israeli soldiers sparks 2006 Lebanon War",
-  },
-  {
     id: "iran-direct-attack-israel",
     name: "Iran's Direct Attack on Israel",
     date: "2024-04-13",
     category: "Geopolitical",
     description: "First direct Iranian missile and drone attack on Israel, largely intercepted",
   },
-]
+  {
+    id: "israel-strike-iran-2025",
+    name: "Israel Strike on Iran (Tehran)",
+    date: "2025-06-14",
+    category: "Geopolitical",
+    description: "Reported Israeli airstrikes on Iranian nuclear-linked sites",
+  },
+].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
 export default function EventAnalysisPage() {
   const router = useRouter()
@@ -195,6 +192,32 @@ export default function EventAnalysisPage() {
     category: "",
     description: "",
   })
+
+  // Preload event data on component mount
+  useEffect(() => {
+    const initializeData = async () => {
+      try {
+        // Clear old data (older than 24 hours)
+        await eventDataDB.clearOldData(24)
+
+        // Get storage stats
+        const stats = await eventDataDB.getStorageStats()
+        console.log(`IndexedDB stats: ${stats.eventDataCount} event records, ${stats.bulkDataCount} bulk records`)
+
+        // Preload data for recent events (last 10 events by date)
+        const recentEvents = DEFAULT_EVENTS.sort(
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+        ).slice(0, 10)
+
+        console.log(`Preloading data for ${recentEvents.length} recent events`)
+        await preloadEventData(recentEvents)
+      } catch (error) {
+        console.error("Failed to initialize event data:", error)
+      }
+    }
+
+    initializeData()
+  }, [])
 
   const handleAddEvent = () => {
     if (newEvent.name && newEvent.date && newEvent.category) {

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Loader2, TrendingUp, TrendingDown, RefreshCw } from "lucide-react"
 import dynamic from "next/dynamic"
 import type { EventData } from "@/types"
+import { eventDataDB, ASSET_NAMES } from "@/lib/indexeddb"
 
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false })
 
@@ -51,7 +52,7 @@ const ASSET_COLORS = {
 }
 
 // Global cache for storing downloaded data - persists across component re-renders
-let globalDataCache: DataCache | null = null
+const globalDataCache: DataCache | null = null
 
 export function EventChart({ event }: EventChartProps) {
   const [assetData, setAssetData] = useState<Record<string, AssetData> | null>(null)
@@ -73,10 +74,7 @@ export function EventChart({ event }: EventChartProps) {
     }
   }, [event])
 
-  const shouldDownloadData = (isManualUpdate = false): boolean => {
-    const now = Date.now()
-    const oneHour = 60 * 60 * 1000
-
+  const shouldDownloadData = async (isManualUpdate = false): Promise<boolean> => {
     // Always download if manual update button pressed
     if (isManualUpdate) {
       console.log("Manual update requested - downloading data")
@@ -85,71 +83,93 @@ export function EventChart({ event }: EventChartProps) {
 
     // Always download on initial session load
     if (isInitialLoad.current) {
-      console.log("Initial session load - downloading data")
+      console.log("Initial session load - checking cache")
       return true
     }
 
-    // Check if we have cached data for this event
-    if (!globalDataCache || globalDataCache.eventDate !== event.date) {
-      console.log("No cache for this event - downloading data")
-      return true
+    // Check if we have fresh cached data for all assets
+    for (const assetName of ASSET_NAMES) {
+      const isFresh = await eventDataDB.isDataFresh(event.id, assetName, 1)
+      if (!isFresh) {
+        console.log(`Stale data for ${assetName} - need to download`)
+        return true
+      }
     }
 
-    // Check if more than 1 hour has passed since last download AND user performed an action
-    const timeSinceLastDownload = now - globalDataCache.lastDownload
-    const timeSinceLastAction = now - lastActionTime.current
-
-    if (timeSinceLastDownload > oneHour && timeSinceLastAction < 5000) {
-      // Action within last 5 seconds
-      console.log("More than 1 hour since last download and recent user action - downloading data")
-      return true
-    }
-
-    console.log("Using cached data - no download needed")
+    console.log("All data is fresh in cache - no download needed")
     return false
   }
 
   const fetchEventData = async (isManualUpdate = false) => {
-    if (!shouldDownloadData(isManualUpdate)) {
-      // Use cached data
-      if (globalDataCache && globalDataCache.eventDate === event.date) {
-        setAssetData(globalDataCache.data)
-        setLastUpdate(new Date(globalDataCache.lastDownload).toLocaleTimeString())
-      }
-      return
-    }
-
     setLoading(true)
     setError(null)
     setGithubSaveStatus("")
 
     try {
-      const response = await fetch("/api/event-data", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          eventDate: event.date,
-          incrementalUpdate: !isManualUpdate && globalDataCache?.eventDate === event.date,
-        }),
-      })
+      // Check if we have cached data for all assets
+      const cachedData: Record<string, any> = {}
+      const missingAssets: string[] = []
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch data: ${response.statusText}`)
+      for (const assetName of ASSET_NAMES) {
+        const isFresh = await eventDataDB.isDataFresh(event.id, assetName, isManualUpdate ? 0 : 1)
+
+        if (isFresh) {
+          const cached = await eventDataDB.getEventData(event.id, assetName)
+          if (cached) {
+            cachedData[assetName] = cached.data
+            console.log(`Using cached data for ${assetName}`)
+          } else {
+            missingAssets.push(assetName)
+          }
+        } else {
+          missingAssets.push(assetName)
+        }
       }
 
-      const data = await response.json()
-
-      // Update global cache
-      const now = Date.now()
-      globalDataCache = {
-        data: data.assets,
-        lastDownload: now,
-        eventDate: event.date,
+      // If we have all cached data and it's not a manual update, use it
+      if (missingAssets.length === 0 && !isManualUpdate) {
+        setAssetData(cachedData)
+        setLastUpdate(new Date().toLocaleTimeString())
+        setLoading(false)
+        return
       }
 
-      setAssetData(data.assets)
-      setLastUpdate(new Date(now).toLocaleTimeString())
-      setGithubSaveStatus("New data saved to GitHub repository")
+      // Fetch missing data or refresh all if manual update
+      const assetsToFetch = isManualUpdate ? ASSET_NAMES : missingAssets
+
+      if (assetsToFetch.length > 0) {
+        console.log(`Fetching data for ${assetsToFetch.length} assets: ${assetsToFetch.join(", ")}`)
+
+        const response = await fetch("/api/event-data", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventDate: event.date,
+            assetsToFetch: assetsToFetch,
+          }),
+        })
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch data: ${response.statusText}`)
+        }
+
+        const data = await response.json()
+
+        // Store new data in IndexedDB
+        const storePromises = Object.entries(data.assets).map(([assetName, assetData]) =>
+          eventDataDB.storeEventData(event.id, assetName, event.date, assetData),
+        )
+        await Promise.all(storePromises)
+
+        // Combine cached and new data
+        const finalData = { ...cachedData, ...data.assets }
+        setAssetData(finalData)
+        setGithubSaveStatus(`Updated ${assetsToFetch.length} assets, saved to cache`)
+      } else {
+        setAssetData(cachedData)
+      }
+
+      setLastUpdate(new Date().toLocaleTimeString())
 
       // Mark initial load as complete
       if (isInitialLoad.current) {

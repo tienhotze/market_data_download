@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Loader2, TrendingUp, TrendingDown, RefreshCw } from "lucide-react"
 import dynamic from "next/dynamic"
 import type { EventData } from "@/types"
+import { eventDataDB } from "@/lib/indexeddb"
 
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false })
 
@@ -65,7 +66,7 @@ const EVENT_COLORS = [
 ]
 
 // Global cache for storing downloaded data - persists across component re-renders
-let globalMultiEventDataCache: DataCache | null = null
+const globalMultiEventDataCache: DataCache | null = null
 
 export function MultiEventChart({ events }: MultiEventChartProps) {
   const [selectedAsset, setSelectedAsset] = useState("S&P 500")
@@ -97,13 +98,13 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
     const now = Date.now()
     const oneHour = 60 * 60 * 1000
 
-    // Always download if manual update button pressed
+    // Rule 3: Always download if manual update button pressed
     if (isManualUpdate) {
       console.log("Manual update requested - downloading multi-event data")
       return true
     }
 
-    // Always download on initial session load
+    // Rule 1: Always download on initial session load
     if (isInitialLoad.current) {
       console.log("Initial session load - downloading multi-event data")
       return true
@@ -132,7 +133,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
       return true
     }
 
-    // Check if more than 1 hour has passed since last download AND user performed an action
+    // Rule 2: Check if more than 1 hour has passed since last download AND user performed an action
     const timeSinceLastDownload = now - globalMultiEventDataCache.lastDownload
     const timeSinceLastAction = now - lastActionTime.current
 
@@ -152,15 +153,6 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
       return
     }
 
-    if (!shouldDownloadData(isManualUpdate)) {
-      // Use cached data
-      if (globalMultiEventDataCache) {
-        setMultiEventData(globalMultiEventDataCache.data)
-        setLastUpdate(new Date(globalMultiEventDataCache.lastDownload).toLocaleTimeString())
-      }
-      return
-    }
-
     setLoading(true)
     setError(null)
     setGithubSaveStatus("")
@@ -170,27 +162,45 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
         const event = events.find((e) => e.id === eventId)
         if (!event) return null
 
-        const response = await fetch("/api/event-data", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            eventDate: event.date,
-            incrementalUpdate: !isManualUpdate && globalMultiEventDataCache !== null,
-          }),
-        })
+        // Check if we have cached data
+        const isFresh = await eventDataDB.isDataFresh(eventId, selectedAsset, isManualUpdate ? 0 : 1)
+        let assetData
 
-        if (!response.ok) {
-          throw new Error(`Failed to fetch data for ${event.name}`)
+        if (isFresh && !isManualUpdate) {
+          const cached = await eventDataDB.getEventData(eventId, selectedAsset)
+          if (cached) {
+            assetData = cached.data
+            console.log(`Using cached data for ${event.name} - ${selectedAsset}`)
+          }
         }
-
-        const data = await response.json()
-        const assetData = data.assets[selectedAsset]
 
         if (!assetData) {
-          throw new Error(`No data available for ${selectedAsset} in ${event.name}`)
+          console.log(`Fetching fresh data for ${event.name} - ${selectedAsset}`)
+          const response = await fetch("/api/event-data", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              eventDate: event.date,
+              assetsToFetch: [selectedAsset],
+            }),
+          })
+
+          if (!response.ok) {
+            throw new Error(`Failed to fetch data for ${event.name}`)
+          }
+
+          const data = await response.json()
+          assetData = data.assets[selectedAsset]
+
+          if (!assetData) {
+            throw new Error(`No data available for ${selectedAsset} in ${event.name}`)
+          }
+
+          // Store in IndexedDB
+          await eventDataDB.storeEventData(eventId, selectedAsset, event.date, assetData)
         }
 
-        // Generate comprehensive data for this event (-30 to +60 days)
+        // Generate comprehensive data for this event (-30 to +90 days)
         const eventDate = new Date(event.date)
         const reindexedData: number[] = []
 
@@ -265,18 +275,9 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
         medianData,
       }
 
-      // Update global cache
-      const now = Date.now()
-      globalMultiEventDataCache = {
-        data: resultData,
-        lastDownload: now,
-        selectedAsset,
-        selectedEvents: Array.from(selectedEvents),
-      }
-
       setMultiEventData(resultData)
-      setLastUpdate(new Date(now).toLocaleTimeString())
-      setGithubSaveStatus("New data saved to GitHub repository")
+      setLastUpdate(new Date().toLocaleTimeString())
+      setGithubSaveStatus("Data loaded from cache and API")
 
       // Mark initial load as complete
       if (isInitialLoad.current) {
@@ -346,7 +347,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
     setSelectedAsset(newAsset)
   }
 
-  // Enhanced event grouping with subgroups
+  // Enhanced event grouping with subgroups - sorted by date
   const groupedEvents = events.reduce(
     (acc, event) => {
       const category = event.category
@@ -387,6 +388,13 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
     },
     {} as Record<string, Record<string, EventData[]>>,
   )
+
+  // Sort events within each subgroup by date (earliest to latest)
+  Object.keys(groupedEvents).forEach((category) => {
+    Object.keys(groupedEvents[category]).forEach((subgroup) => {
+      groupedEvents[category][subgroup].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    })
+  })
 
   return (
     <div className="space-y-6">
@@ -465,21 +473,21 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                             {subgroup} ({subgroupEvents.length})
                           </label>
                         </div>
-                        {subgroupEvents
-                          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                          .map((event) => (
-                            <div key={event.id} className="flex items-start space-x-2 ml-6">
-                              <Checkbox
-                                id={event.id}
-                                checked={selectedEvents.has(event.id)}
-                                onCheckedChange={(checked) => handleEventToggle(event.id, checked as boolean)}
-                              />
-                              <label htmlFor={event.id} className="text-sm cursor-pointer">
-                                <div className="font-medium">{event.name}</div>
-                                <div className="text-xs text-gray-500">{new Date(event.date).toLocaleDateString()}</div>
-                              </label>
-                            </div>
-                          ))}
+                        {subgroupEvents.map((event) => (
+                          <div key={event.id} className="flex items-start space-x-2 ml-6">
+                            <Checkbox
+                              id={event.id}
+                              checked={selectedEvents.has(event.id)}
+                              onCheckedChange={(checked) => handleEventToggle(event.id, checked as boolean)}
+                            />
+                            <label htmlFor={event.id} className="text-sm cursor-pointer">
+                              <div className="font-medium">{event.name}</div>
+                              <div className="text-xs text-gray-500">
+                                {new Date(event.date).toLocaleDateString()} • {event.category}
+                              </div>
+                            </label>
+                          </div>
+                        ))}
                       </div>
                     )
                   })}
