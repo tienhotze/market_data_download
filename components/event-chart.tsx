@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Loader2, TrendingUp, TrendingDown } from "lucide-react"
+import { Loader2, TrendingUp, TrendingDown, RefreshCw } from "lucide-react"
 import dynamic from "next/dynamic"
 import type { EventData } from "@/types"
 
@@ -35,6 +35,12 @@ interface PriceChange {
   changes: Record<string, { absolute: number; percentage: number; value: number; rawValue: number } | null>
 }
 
+interface DataCache {
+  data: Record<string, AssetData>
+  lastDownload: number
+  eventDate: string
+}
+
 const ASSET_COLORS = {
   "S&P 500": "#2563eb",
   "WTI Crude Oil": "#dc2626",
@@ -44,6 +50,9 @@ const ASSET_COLORS = {
   VIX: "#ec4899",
 }
 
+// Cache for storing downloaded data
+let dataCache: DataCache | null = null
+
 export function EventChart({ event }: EventChartProps) {
   const [assetData, setAssetData] = useState<Record<string, AssetData> | null>(null)
   const [loading, setLoading] = useState(false)
@@ -51,6 +60,7 @@ export function EventChart({ event }: EventChartProps) {
   const [selectedAssets, setSelectedAssets] = useState<Set<string>>(
     new Set(["S&P 500", "WTI Crude Oil", "Gold", "Dollar Index", "10Y Treasury Yield", "VIX"]),
   )
+  const [lastUpdate, setLastUpdate] = useState<string>("")
 
   useEffect(() => {
     if (event) {
@@ -58,7 +68,25 @@ export function EventChart({ event }: EventChartProps) {
     }
   }, [event])
 
-  const fetchEventData = async () => {
+  const shouldRefreshData = (): boolean => {
+    if (!dataCache || dataCache.eventDate !== event.date) {
+      return true // No cache or different event
+    }
+
+    const now = Date.now()
+    const oneHour = 60 * 60 * 1000
+    return now - dataCache.lastDownload > oneHour
+  }
+
+  const fetchEventData = async (forceUpdate = false) => {
+    // Check if we can use cached data
+    if (!forceUpdate && dataCache && dataCache.eventDate === event.date && !shouldRefreshData()) {
+      console.log("Using cached data")
+      setAssetData(dataCache.data)
+      setLastUpdate(new Date(dataCache.lastDownload).toLocaleTimeString())
+      return
+    }
+
     setLoading(true)
     setError(null)
 
@@ -68,6 +96,7 @@ export function EventChart({ event }: EventChartProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           eventDate: event.date,
+          incrementalUpdate: !forceUpdate && dataCache?.eventDate === event.date,
         }),
       })
 
@@ -76,12 +105,26 @@ export function EventChart({ event }: EventChartProps) {
       }
 
       const data = await response.json()
+
+      // Update cache
+      const now = Date.now()
+      dataCache = {
+        data: data.assets,
+        lastDownload: now,
+        eventDate: event.date,
+      }
+
       setAssetData(data.assets)
+      setLastUpdate(new Date(now).toLocaleTimeString())
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data")
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleUpdate = () => {
+    fetchEventData(true)
   }
 
   const toggleAsset = (assetName: string) => {
@@ -300,7 +343,16 @@ export function EventChart({ event }: EventChartProps) {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Multi-Asset Impact Analysis: {event.name}</CardTitle>
+          <CardTitle className="flex items-center justify-between">
+            <span>Multi-Asset Impact Analysis: {event.name}</span>
+            <div className="flex items-center gap-2">
+              {lastUpdate && <span className="text-sm text-gray-500">Last updated: {lastUpdate}</span>}
+              <Button onClick={handleUpdate} variant="outline" size="sm" disabled={loading}>
+                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+                Update
+              </Button>
+            </div>
+          </CardTitle>
           <CardDescription>
             Reindexed to 100 on event date ({event.date}). Showing 30 days before to 60 days after. Note: 10Y yield and
             VIX use additive reindexing (current - start + 100).
@@ -333,10 +385,6 @@ export function EventChart({ event }: EventChartProps) {
             <Plot
               data={allTraces}
               layout={{
-                title: {
-                  text: `Market Impact: ${event.name}`,
-                  font: { size: 16 },
-                },
                 xaxis: {
                   title: "Date",
                   type: "date",

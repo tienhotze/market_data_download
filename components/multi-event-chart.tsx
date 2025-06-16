@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Loader2, TrendingUp, TrendingDown } from "lucide-react"
+import { Loader2, TrendingUp, TrendingDown, RefreshCw } from "lucide-react"
 import dynamic from "next/dynamic"
 import type { EventData } from "@/types"
 
@@ -28,6 +28,13 @@ interface MultiEventData {
   eventData: EventAssetData[]
   averageData: number[]
   medianData: number[]
+}
+
+interface DataCache {
+  data: Record<string, any>
+  lastDownload: number
+  selectedAsset: string
+  selectedEvents: string[]
 }
 
 const AVAILABLE_ASSETS = [
@@ -57,12 +64,16 @@ const EVENT_COLORS = [
   "#6366f1",
 ]
 
+// Cache for storing downloaded data
+let multiEventDataCache: DataCache | null = null
+
 export function MultiEventChart({ events }: MultiEventChartProps) {
   const [selectedAsset, setSelectedAsset] = useState("S&P 500")
   const [selectedEvents, setSelectedEvents] = useState<Set<string>>(new Set())
   const [multiEventData, setMultiEventData] = useState<MultiEventData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [lastUpdate, setLastUpdate] = useState<string>("")
 
   // Generate day labels from -30 to +60
   const generateDayLabels = (): string[] => {
@@ -77,9 +88,36 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
     return labels
   }
 
-  const fetchMultiEventData = async () => {
+  const shouldRefreshData = (): boolean => {
+    if (!multiEventDataCache) {
+      return true // No cache
+    }
+
+    const now = Date.now()
+    const oneHour = 60 * 60 * 1000
+    const cacheExpired = now - multiEventDataCache.lastDownload > oneHour
+
+    // Check if selection changed
+    const eventsArray = Array.from(selectedEvents).sort()
+    const cachedEventsArray = multiEventDataCache.selectedEvents.sort()
+    const selectionChanged =
+      selectedAsset !== multiEventDataCache.selectedAsset ||
+      JSON.stringify(eventsArray) !== JSON.stringify(cachedEventsArray)
+
+    return cacheExpired || selectionChanged
+  }
+
+  const fetchMultiEventData = async (forceUpdate = false) => {
     if (selectedEvents.size === 0) {
       setMultiEventData(null)
+      return
+    }
+
+    // Check if we can use cached data
+    if (!forceUpdate && !shouldRefreshData()) {
+      console.log("Using cached multi-event data")
+      setMultiEventData(multiEventDataCache!.data)
+      setLastUpdate(new Date(multiEventDataCache!.lastDownload).toLocaleTimeString())
       return
     }
 
@@ -96,6 +134,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             eventDate: event.date,
+            incrementalUpdate: !forceUpdate && multiEventDataCache !== null,
           }),
         })
 
@@ -178,12 +217,24 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
         }
       }
 
-      setMultiEventData({
+      const resultData = {
         dayLabels,
         eventData: validEventData,
         averageData,
         medianData,
-      })
+      }
+
+      // Update cache
+      const now = Date.now()
+      multiEventDataCache = {
+        data: resultData,
+        lastDownload: now,
+        selectedAsset,
+        selectedEvents: Array.from(selectedEvents),
+      }
+
+      setMultiEventData(resultData)
+      setLastUpdate(new Date(now).toLocaleTimeString())
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch multi-event data")
     } finally {
@@ -194,6 +245,10 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
   useEffect(() => {
     fetchMultiEventData()
   }, [selectedEvents, selectedAsset])
+
+  const handleUpdate = () => {
+    fetchMultiEventData(true)
+  }
 
   const handleEventToggle = (eventId: string, checked: boolean) => {
     const newSelected = new Set(selectedEvents)
@@ -213,23 +268,74 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
     setSelectedEvents(new Set())
   }
 
-  // Group events by category for better organization
+  const handleSubgroupToggle = (subgroupEvents: EventData[], checked: boolean) => {
+    const newSelected = new Set(selectedEvents)
+    subgroupEvents.forEach((event) => {
+      if (checked) {
+        newSelected.add(event.id)
+      } else {
+        newSelected.delete(event.id)
+      }
+    })
+    setSelectedEvents(newSelected)
+  }
+
+  // Enhanced event grouping with subgroups
   const groupedEvents = events.reduce(
     (acc, event) => {
-      if (!acc[event.category]) {
-        acc[event.category] = []
+      const category = event.category
+      let subgroup = "Other"
+
+      // Define subgroups based on event names and categories
+      if (category === "Geopolitical") {
+        if (
+          event.name.includes("Operation") ||
+          event.name.includes("War") ||
+          event.name.includes("Attack") ||
+          event.name.includes("Strike")
+        ) {
+          subgroup = "Military Operations"
+        } else if (event.name.includes("Iran") || event.name.includes("Hezbollah") || event.name.includes("Hamas")) {
+          subgroup = "Middle East Conflicts"
+        } else {
+          subgroup = "Other Geopolitical"
+        }
+      } else if (category === "Fed") {
+        subgroup = "Federal Reserve Policy"
+      } else if (category === "Financial Crisis" || category === "Banking") {
+        subgroup = "Financial System"
+      } else if (category === "Pandemic") {
+        subgroup = "Health Crisis"
+      } else {
+        subgroup = category
       }
-      acc[event.category].push(event)
+
+      if (!acc[category]) {
+        acc[category] = {}
+      }
+      if (!acc[category][subgroup]) {
+        acc[category][subgroup] = []
+      }
+      acc[category][subgroup].push(event)
       return acc
     },
-    {} as Record<string, EventData[]>,
+    {} as Record<string, Record<string, EventData[]>>,
   )
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Multi-Event Comparison</CardTitle>
+          <CardTitle className="flex items-center justify-between">
+            <span>Multi-Event Comparison</span>
+            <div className="flex items-center gap-2">
+              {lastUpdate && <span className="text-sm text-gray-500">Last updated: {lastUpdate}</span>}
+              <Button onClick={handleUpdate} variant="outline" size="sm" disabled={loading}>
+                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+                Update
+              </Button>
+            </div>
+          </CardTitle>
           <CardDescription>
             Compare market impact across multiple events for a single asset. Select events and asset to analyze.
           </CardDescription>
@@ -267,26 +373,49 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
-              {Object.entries(groupedEvents).map(([category, categoryEvents]) => (
-                <div key={category} className="space-y-2">
-                  <h4 className="text-sm font-semibold text-gray-700 bg-gray-100 px-2 py-1 rounded">
-                    {category} ({categoryEvents.length})
-                  </h4>
-                  {categoryEvents
-                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                    .map((event) => (
-                      <div key={event.id} className="flex items-start space-x-2">
-                        <Checkbox
-                          id={event.id}
-                          checked={selectedEvents.has(event.id)}
-                          onCheckedChange={(checked) => handleEventToggle(event.id, checked as boolean)}
-                        />
-                        <label htmlFor={event.id} className="text-sm cursor-pointer">
-                          <div className="font-medium">{event.name}</div>
-                          <div className="text-xs text-gray-500">{new Date(event.date).toLocaleDateString()}</div>
-                        </label>
+              {Object.entries(groupedEvents).map(([category, subgroups]) => (
+                <div key={category} className="space-y-3">
+                  <h3 className="text-sm font-bold text-gray-800 bg-gray-200 px-3 py-2 rounded">{category}</h3>
+                  {Object.entries(subgroups).map(([subgroup, subgroupEvents]) => {
+                    const allSelected = subgroupEvents.every((event) => selectedEvents.has(event.id))
+                    const someSelected = subgroupEvents.some((event) => selectedEvents.has(event.id))
+
+                    return (
+                      <div key={subgroup} className="space-y-2 ml-2">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`${category}-${subgroup}`}
+                            checked={allSelected}
+                            ref={(el) => {
+                              if (el) el.indeterminate = someSelected && !allSelected
+                            }}
+                            onCheckedChange={(checked) => handleSubgroupToggle(subgroupEvents, checked as boolean)}
+                          />
+                          <label
+                            htmlFor={`${category}-${subgroup}`}
+                            className="text-sm font-semibold text-gray-700 cursor-pointer"
+                          >
+                            {subgroup} ({subgroupEvents.length})
+                          </label>
+                        </div>
+                        {subgroupEvents
+                          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                          .map((event) => (
+                            <div key={event.id} className="flex items-start space-x-2 ml-6">
+                              <Checkbox
+                                id={event.id}
+                                checked={selectedEvents.has(event.id)}
+                                onCheckedChange={(checked) => handleEventToggle(event.id, checked as boolean)}
+                              />
+                              <label htmlFor={event.id} className="text-sm cursor-pointer">
+                                <div className="font-medium">{event.name}</div>
+                                <div className="text-xs text-gray-500">{new Date(event.date).toLocaleDateString()}</div>
+                              </label>
+                            </div>
+                          ))}
                       </div>
-                    ))}
+                    )
+                  })}
                 </div>
               ))}
             </div>
@@ -600,6 +729,29 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                         </TableRow>
                       )
                     })}
+
+                    {/* Total Events Row */}
+                    <TableRow className="bg-gray-100 font-semibold">
+                      <TableCell className="font-bold">Total Events</TableCell>
+                      <TableCell className="text-center">
+                        <span className="text-gray-700">{multiEventData.eventData.length}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="text-gray-700">{multiEventData.eventData.length}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="text-gray-700">{multiEventData.eventData.length}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="text-gray-700">{multiEventData.eventData.length}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="text-gray-700">{multiEventData.eventData.length}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <span className="text-gray-700">{multiEventData.eventData.length}</span>
+                      </TableCell>
+                    </TableRow>
 
                     {/* Average Row */}
                     <TableRow className="bg-blue-50 font-semibold">
