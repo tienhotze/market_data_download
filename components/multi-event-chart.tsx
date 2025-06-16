@@ -371,10 +371,6 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                     },
                   ]}
                   layout={{
-                    title: {
-                      text: `Multi-Event Analysis: ${selectedAsset}`,
-                      font: { size: 16 },
-                    },
                     xaxis: {
                       title: "Days from Event Start",
                       type: "category",
@@ -387,11 +383,16 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                     showlegend: true,
                     legend: {
                       orientation: "h",
-                      y: -0.2,
+                      y: 1.15,
                       x: 0.5,
                       xanchor: "center",
+                      yanchor: "bottom",
+                      font: { size: 10 },
+                      bgcolor: "rgba(255,255,255,0.8)",
+                      bordercolor: "#E5E7EB",
+                      borderwidth: 1,
                     },
-                    margin: { t: 50, b: 80, l: 60, r: 20 },
+                    margin: { t: 120, b: 60, l: 60, r: 20 },
                     annotations: [
                       {
                         x: "0d",
