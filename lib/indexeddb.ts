@@ -1,13 +1,9 @@
 interface AssetPriceData {
   assetName: string
   ticker: string
-  data: {
+  closingPrices: {
     date: string
-    open: number
-    high: number
-    low: number
     close: number
-    volume: number
   }[]
   dateRange: {
     start: string
@@ -57,7 +53,7 @@ interface AssetFailureInfo {
 
 class EventDataDB {
   private dbName = "MarketWizardEventData"
-  private version = 3 // Increment version for schema changes
+  private version = 4 // Increment version for schema changes
   private db: IDBDatabase | null = null
 
   async init(): Promise<void> {
@@ -73,14 +69,14 @@ class EventDataDB {
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result
 
-        // Create raw asset price data store
+        // Create raw asset price data store (closing prices only)
         if (!db.objectStoreNames.contains("assetPriceData")) {
           const assetStore = db.createObjectStore("assetPriceData", { keyPath: "assetName" })
           assetStore.createIndex("timestamp", "timestamp", { unique: false })
           assetStore.createIndex("ticker", "ticker", { unique: false })
         }
 
-        // Create event data store
+        // Create computed event data store (calculated on demand)
         if (!db.objectStoreNames.contains("eventData")) {
           const eventStore = db.createObjectStore("eventData", { keyPath: "id" })
           eventStore.createIndex("eventId", "eventId", { unique: false })
@@ -104,8 +100,8 @@ class EventDataDB {
     })
   }
 
-  // Raw asset price data methods
-  async storeAssetPriceData(
+  // Store only closing prices to save space
+  async storeAssetClosingPrices(
     assetName: string,
     ticker: string,
     data: any[],
@@ -120,13 +116,9 @@ class EventDataDB {
       const assetData: AssetPriceData = {
         assetName,
         ticker,
-        data: data.map((row) => ({
-          date: row.date,
-          open: row.open,
-          high: row.high,
-          low: row.low,
-          close: row.close,
-          volume: row.volume || 0,
+        closingPrices: data.map((row) => ({
+          date: row.date || row.Date,
+          close: row.close || row.Close || row["Adj Close"],
         })),
         dateRange,
         timestamp: Date.now(),
@@ -140,7 +132,17 @@ class EventDataDB {
     })
   }
 
-  async getAssetPriceData(assetName: string): Promise<AssetPriceData | null> {
+  // Legacy method for backward compatibility
+  async storeAssetPriceData(
+    assetName: string,
+    ticker: string,
+    data: any[],
+    dateRange: { start: string; end: string },
+  ): Promise<void> {
+    return this.storeAssetClosingPrices(assetName, ticker, data, dateRange)
+  }
+
+  async getAssetClosingPrices(assetName: string): Promise<AssetPriceData | null> {
     if (!this.db) await this.init()
 
     return new Promise((resolve, reject) => {
@@ -155,7 +157,12 @@ class EventDataDB {
     })
   }
 
-  async getAllAssetPriceData(): Promise<Record<string, AssetPriceData>> {
+  // Legacy method for backward compatibility
+  async getAssetPriceData(assetName: string): Promise<AssetPriceData | null> {
+    return this.getAssetClosingPrices(assetName)
+  }
+
+  async getAllAssetClosingPrices(): Promise<Record<string, AssetPriceData>> {
     if (!this.db) await this.init()
 
     return new Promise((resolve, reject) => {
@@ -177,13 +184,85 @@ class EventDataDB {
     })
   }
 
+  // Legacy method for backward compatibility
+  async getAllAssetPriceData(): Promise<Record<string, AssetPriceData>> {
+    return this.getAllAssetClosingPrices()
+  }
+
   async isAssetDataFresh(assetName: string, maxAgeHours = 24): Promise<boolean> {
-    const data = await this.getAssetPriceData(assetName)
+    const data = await this.getAssetClosingPrices(assetName)
     if (!data) return false
 
     const now = Date.now()
     const maxAge = maxAgeHours * 60 * 60 * 1000
     return now - data.timestamp < maxAge
+  }
+
+  // Calculate reindexed data on-demand from closing prices
+  async calculateEventData(
+    assetName: string,
+    eventDate: string,
+    daysBeforeEvent = 30,
+    daysAfterEvent = 60,
+  ): Promise<{
+    dates: string[]
+    prices: number[]
+    reindexed: number[]
+    eventPrice: number
+  } | null> {
+    const assetData = await this.getAssetClosingPrices(assetName)
+    if (!assetData) return null
+
+    const eventDateObj = new Date(eventDate)
+    const startDate = new Date(eventDateObj)
+    startDate.setDate(startDate.getDate() - daysBeforeEvent)
+    const endDate = new Date(eventDateObj)
+    endDate.setDate(endDate.getDate() + daysAfterEvent)
+
+    // Filter prices within the date range
+    const relevantPrices = assetData.closingPrices.filter((price) => {
+      const priceDate = new Date(price.date)
+      return priceDate >= startDate && priceDate <= endDate
+    })
+
+    if (relevantPrices.length === 0) return null
+
+    // Sort by date
+    relevantPrices.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
+    // Find the event date price (or closest available)
+    let eventPrice = relevantPrices[0].close
+    let eventDateIndex = -1
+
+    for (let i = 0; i < relevantPrices.length; i++) {
+      const priceDate = new Date(relevantPrices[i].date)
+      if (priceDate <= eventDateObj) {
+        eventPrice = relevantPrices[i].close
+        eventDateIndex = i
+      } else {
+        break
+      }
+    }
+
+    // Calculate reindexed values
+    const dates = relevantPrices.map((p) => p.date)
+    const prices = relevantPrices.map((p) => p.close)
+    const reindexed = prices.map((price) => {
+      // Special handling for yield and VIX (additive reindexing)
+      if (assetName === "10Y Treasury Yield" || assetName === "VIX") {
+        return price - eventPrice + 100
+      } else {
+        // Multiplicative reindexing for other assets
+        return (price / eventPrice) * 100
+      }
+    })
+
+    return {
+      dates,
+      prices,
+      reindexed,
+      eventPrice,
+    }
   }
 
   private generateKey(eventId: string, assetName: string): string {
@@ -601,69 +680,11 @@ export const ASSET_TICKERS = {
 
 export const ASSET_NAMES = Object.keys(ASSET_TICKERS)
 
-export async function preloadEventData(events: Array<{ id: string; date: string; name: string }>) {
-  console.log(`Preloading data for ${events.length} events across ${ASSET_NAMES.length} assets`)
-
-  const loadPromises: Promise<void>[] = []
-
-  for (const event of events) {
-    for (const assetName of ASSET_NAMES) {
-      loadPromises.push(
-        (async () => {
-          try {
-            // Check if we have fresh data
-            const isFresh = await eventDataDB.isDataFresh(event.id, assetName, 1)
-            if (isFresh) {
-              console.log(`Using cached data for ${event.name} - ${assetName}`)
-              return
-            }
-
-            // Fetch fresh data
-            console.log(`Fetching fresh data for ${event.name} - ${assetName}`)
-            const response = await fetch("/api/event-data", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                eventDate: event.date,
-                ticker: ASSET_TICKERS[assetName as keyof typeof ASSET_TICKERS],
-              }),
-            })
-
-            if (response.ok) {
-              const data = await response.json()
-              const assetData = data.assets[assetName]
-
-              if (assetData) {
-                await eventDataDB.storeEventData(event.id, assetName, event.date, assetData)
-                console.log(`Cached data for ${event.name} - ${assetName}`)
-              }
-            }
-          } catch (error) {
-            console.error(`Failed to preload ${event.name} - ${assetName}:`, error)
-          }
-        })(),
-      )
-    }
-  }
-
-  // Execute in batches to avoid overwhelming the API
-  const batchSize = 6 // 6 assets at a time
-  for (let i = 0; i < loadPromises.length; i += batchSize) {
-    const batch = loadPromises.slice(i, i + batchSize)
-    await Promise.all(batch)
-
-    // Small delay between batches
-    if (i + batchSize < loadPromises.length) {
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    }
-  }
-
-  console.log("Preloading completed")
-}
+// Keep only the refreshAllAssetData function for manual refresh
 
 // Refresh all asset data using GitHub first, then Yahoo Finance with retry limits
 export const refreshAllAssetData = async () => {
-  console.log("Refreshing all asset data with throttled GitHub and Yahoo Finance calls")
+  console.log("Refreshing all asset closing prices with throttled GitHub and Yahoo Finance calls")
 
   const refreshPromises: Promise<void>[] = []
   const MAX_RETRIES = 3
@@ -672,7 +693,7 @@ export const refreshAllAssetData = async () => {
     refreshPromises.push(
       (async () => {
         try {
-          console.log(`Refreshing data for ${assetName}`)
+          console.log(`Refreshing closing prices for ${assetName}`)
           const ticker = ASSET_TICKERS[assetName as keyof typeof ASSET_TICKERS]
 
           // Check if asset has failed recently
@@ -713,9 +734,10 @@ export const refreshAllAssetData = async () => {
                     end: githubData.data[githubData.data.length - 1].date,
                   }
 
-                  await eventDataDB.storeAssetPriceData(assetName, ticker, githubData.data, dateRange)
+                  // Store only closing prices
+                  await eventDataDB.storeAssetClosingPrices(assetName, ticker, githubData.data, dateRange)
                   githubSuccess = true
-                  console.log(`Updated ${assetName} from GitHub: ${githubData.data.length} data points`)
+                  console.log(`Updated ${assetName} closing prices from GitHub: ${githubData.data.length} data points`)
                 }
               } else if (githubResponse.status === 429) {
                 const errorData = await githubResponse.json()
@@ -757,17 +779,11 @@ export const refreshAllAssetData = async () => {
                     end: yahooData.data[yahooData.data.length - 1].Date,
                   }
 
-                  const priceData = yahooData.data.map((row: any) => ({
-                    date: row.Date,
-                    open: row.Open,
-                    high: row.High,
-                    low: row.Low,
-                    close: row.Close,
-                    volume: row.Volume || 0,
-                  }))
-
-                  await eventDataDB.storeAssetPriceData(assetName, ticker, priceData, dateRange)
-                  console.log(`Updated ${assetName} from Yahoo Finance: ${priceData.length} data points`)
+                  // Store only closing prices
+                  await eventDataDB.storeAssetClosingPrices(assetName, ticker, yahooData.data, dateRange)
+                  console.log(
+                    `Updated ${assetName} closing prices from Yahoo Finance: ${yahooData.data.length} data points`,
+                  )
                 }
               } else if (yahooResponse.status === 429) {
                 const errorData = await yahooResponse.json()
@@ -808,5 +824,5 @@ export const refreshAllAssetData = async () => {
     }
   }
 
-  console.log("All asset data refresh completed with GitHub and Yahoo Finance throttling")
+  console.log("All asset closing price refresh completed with GitHub and Yahoo Finance throttling")
 }

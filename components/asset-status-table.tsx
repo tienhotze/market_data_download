@@ -125,7 +125,8 @@ export function AssetStatusTable() {
 
       for (const assetName of ASSET_NAMES) {
         const ticker = ASSET_TICKERS[assetName as keyof typeof ASSET_TICKERS]
-        const assetData = await eventDataDB.getAssetPriceData(assetName)
+        // Get closing prices data instead of full price data
+        const assetData = await eventDataDB.getAssetClosingPrices(assetName)
         const failureInfo = failures[assetName]
 
         let status: AssetStatus["status"] = "missing"
@@ -155,16 +156,17 @@ export function AssetStatusTable() {
           }
         }
 
-        if (assetData && assetData.data.length > 0 && status === "missing") {
-          const lastDataPoint = assetData.data[assetData.data.length - 1]
+        if (assetData && assetData.closingPrices.length > 0 && status === "missing") {
+          const lastPrice = assetData.closingPrices[assetData.closingPrices.length - 1]
+          const lastDate = assetData.dates[assetData.dates.length - 1]
           status = getStatus(assetData.timestamp)
 
           statuses.push({
             name: assetName,
             ticker,
-            lastPrice: lastDataPoint.close,
-            lastDate: lastDataPoint.date,
-            dataPoints: assetData.data.length,
+            lastPrice,
+            lastDate,
+            dataPoints: assetData.closingPrices.length,
             cacheAge: calculateCacheAge(assetData.timestamp),
             status,
             failureInfo: failureDetails,
@@ -175,7 +177,7 @@ export function AssetStatusTable() {
             ticker,
             lastPrice: null,
             lastDate: null,
-            dataPoints: assetData?.data.length || 0,
+            dataPoints: assetData?.closingPrices.length || 0,
             cacheAge: failureInfo
               ? `Failed ${calculateCacheAge(Math.max(failureInfo.lastYahooAttempt || 0, failureInfo.lastGithubAttempt || 0))}`
               : "Never",
@@ -205,7 +207,7 @@ export function AssetStatusTable() {
     try {
       toast({
         title: "Refreshing Cache",
-        description: "Updating asset data from GitHub and Yahoo Finance...",
+        description: "Updating asset closing prices from GitHub and Yahoo Finance...",
       })
 
       await refreshAllAssetData()
@@ -216,7 +218,7 @@ export function AssetStatusTable() {
 
       toast({
         title: "Cache Refreshed",
-        description: `Successfully updated all asset data in ${duration}s`,
+        description: `Successfully updated closing prices in ${duration}s`,
       })
     } catch (error) {
       console.error("Failed to refresh cache:", error)
@@ -249,10 +251,10 @@ export function AssetStatusTable() {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
-              Asset Data Status
+              Asset Closing Prices Status
               {lastRefresh && <span className="text-sm font-normal text-gray-500">Last refreshed: {lastRefresh}</span>}
             </CardTitle>
-            <CardDescription>Current cache status and latest prices for all tracked assets</CardDescription>
+            <CardDescription>Current cache status and latest closing prices for all tracked assets</CardDescription>
           </div>
           <Button onClick={handleRefreshCache} disabled={refreshing} variant="outline" size="sm">
             <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
@@ -272,7 +274,7 @@ export function AssetStatusTable() {
             <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
               <div className="text-center p-3 bg-gray-50 rounded-lg">
                 <div className="text-2xl font-bold text-gray-900">{totalDataPoints.toLocaleString()}</div>
-                <div className="text-sm text-gray-600">Total Data Points</div>
+                <div className="text-sm text-gray-600">Closing Prices</div>
               </div>
               <div className="text-center p-3 bg-green-50 rounded-lg">
                 <div className="text-2xl font-bold text-green-600">{freshCount}</div>
@@ -305,7 +307,7 @@ export function AssetStatusTable() {
                     <TableHead className="text-center min-w-24">Status</TableHead>
                     <TableHead className="text-right min-w-28">Last Price</TableHead>
                     <TableHead className="text-center min-w-24">Last Date</TableHead>
-                    <TableHead className="text-center min-w-20">Data Points</TableHead>
+                    <TableHead className="text-center min-w-20">Closing Prices</TableHead>
                     <TableHead className="text-center min-w-20">Cache Age</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -343,7 +345,12 @@ export function AssetStatusTable() {
                       <TableCell className="text-center">
                         {asset.lastDate ? new Date(asset.lastDate).toLocaleDateString() : "N/A"}
                       </TableCell>
-                      <TableCell className="text-center">{asset.dataPoints.toLocaleString()}</TableCell>
+                      <TableCell className="text-center">
+                        <div className="flex flex-col">
+                          <span className="font-medium">{asset.dataPoints.toLocaleString()}</span>
+                          <span className="text-xs text-gray-500">prices cached</span>
+                        </div>
+                      </TableCell>
                       <TableCell className="text-center">
                         <span
                           className={`text-sm ${
@@ -390,7 +397,7 @@ export function AssetStatusTable() {
                     {staleCount > 0 ? `${staleCount} asset(s) have stale data. ` : ""}
                     {totalFailedCount > 0
                       ? "Failed assets are in cooldown period. Try refreshing later."
-                      : "Consider refreshing the cache for the latest market data."}
+                      : "Consider refreshing the cache for the latest closing prices."}
                   </span>
                 </div>
               </div>

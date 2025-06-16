@@ -106,70 +106,60 @@ export function EventChart({ event }: EventChartProps) {
     setGithubSaveStatus("")
 
     try {
-      // Check if we have cached data for all assets
-      const cachedData: Record<string, any> = {}
-      const missingAssets: string[] = []
+      const assetDataPromises = ASSET_NAMES.map(async (assetName) => {
+        try {
+          // First try to calculate from cached closing prices
+          const calculatedData = await eventDataDB.calculateEventData(event.id, assetName, event.date, 30, 60)
 
-      for (const assetName of ASSET_NAMES) {
-        const isFresh = await eventDataDB.isDataFresh(event.id, assetName, isManualUpdate ? 0 : 1)
-
-        if (isFresh) {
-          const cached = await eventDataDB.getEventData(event.id, assetName)
-          if (cached) {
-            cachedData[assetName] = cached.data
-            console.log(`Using cached data for ${assetName}`)
-          } else {
-            missingAssets.push(assetName)
+          if (calculatedData && !isManualUpdate) {
+            console.log(`Using cached closing prices for ${assetName}`)
+            return { assetName, data: calculatedData }
           }
-        } else {
-          missingAssets.push(assetName)
+
+          // If no cached data or manual update, fetch fresh data
+          console.log(`Fetching fresh data for ${assetName}`)
+          const response = await fetch("/api/event-data", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              eventDate: event.date,
+              assetsToFetch: [assetName],
+            }),
+          })
+
+          if (!response.ok) {
+            throw new Error(`Failed to fetch data for ${assetName}`)
+          }
+
+          const data = await response.json()
+          const assetData = data.assets[assetName]
+
+          if (!assetData) {
+            throw new Error(`No data available for ${assetName}`)
+          }
+
+          // Store in IndexedDB
+          await eventDataDB.storeEventData(event.id, assetName, event.date, assetData)
+
+          return { assetName, data: assetData }
+        } catch (error) {
+          console.error(`Failed to get data for ${assetName}:`, error)
+          return { assetName, data: null }
         }
-      }
+      })
 
-      // If we have all cached data and it's not a manual update, use it
-      if (missingAssets.length === 0 && !isManualUpdate) {
-        setAssetData(cachedData)
-        setLastUpdate(new Date().toLocaleTimeString())
-        setLoading(false)
-        return
-      }
+      const results = await Promise.all(assetDataPromises)
+      const finalAssetData: Record<string, any> = {}
 
-      // Fetch missing data or refresh all if manual update
-      const assetsToFetch = isManualUpdate ? ASSET_NAMES : missingAssets
-
-      if (assetsToFetch.length > 0) {
-        console.log(`Fetching data for ${assetsToFetch.length} assets: ${assetsToFetch.join(", ")}`)
-
-        const response = await fetch("/api/event-data", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            eventDate: event.date,
-            assetsToFetch: assetsToFetch,
-          }),
-        })
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch data: ${response.statusText}`)
+      results.forEach(({ assetName, data }) => {
+        if (data) {
+          finalAssetData[assetName] = data
         }
+      })
 
-        const data = await response.json()
-
-        // Store new data in IndexedDB
-        const storePromises = Object.entries(data.assets).map(([assetName, assetData]) =>
-          eventDataDB.storeEventData(event.id, assetName, event.date, assetData),
-        )
-        await Promise.all(storePromises)
-
-        // Combine cached and new data
-        const finalData = { ...cachedData, ...data.assets }
-        setAssetData(finalData)
-        setGithubSaveStatus(`Updated ${assetsToFetch.length} assets, saved to cache`)
-      } else {
-        setAssetData(cachedData)
-      }
-
+      setAssetData(finalAssetData)
       setLastUpdate(new Date().toLocaleTimeString())
+      setGithubSaveStatus(`Loaded data for ${Object.keys(finalAssetData).length} assets`)
 
       // Mark initial load as complete
       if (isInitialLoad.current) {

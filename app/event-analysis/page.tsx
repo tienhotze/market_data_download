@@ -21,9 +21,11 @@ import { ArrowLeft, Plus, Calendar, TrendingUp } from "lucide-react"
 import { EventChart } from "@/components/event-chart"
 import { MultiEventChart } from "@/components/multi-event-chart"
 import type { EventData } from "@/types"
-import { preloadEventData, eventDataDB } from "@/lib/indexeddb"
+import { eventDataDB } from "@/lib/indexeddb"
 import { AssetStatusTable } from "@/components/asset-status-table"
+import { AssetLoader } from "@/components/asset-loader"
 import { Toaster } from "@/components/ui/toaster"
+import { useToast } from "@/hooks/use-toast"
 
 const DEFAULT_EVENTS: EventData[] = [
   // Sort all events by date (earliest to latest)
@@ -185,6 +187,7 @@ const DEFAULT_EVENTS: EventData[] = [
 
 export default function EventAnalysisPage() {
   const router = useRouter()
+  const { toast } = useToast()
   const [events, setEvents] = useState<EventData[]>(DEFAULT_EVENTS)
   const [selectedEvent, setSelectedEvent] = useState<EventData | null>(null)
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -195,7 +198,7 @@ export default function EventAnalysisPage() {
     description: "",
   })
 
-  // Preload event data on component mount
+  // Initialize database without preloading
   useEffect(() => {
     const initializeData = async () => {
       try {
@@ -206,20 +209,22 @@ export default function EventAnalysisPage() {
         const stats = await eventDataDB.getStorageStats()
         console.log(`IndexedDB stats: ${stats.eventDataCount} event records, ${stats.bulkDataCount} bulk records`)
 
-        // Preload data for recent events (last 10 events by date)
-        const recentEvents = DEFAULT_EVENTS.sort(
-          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-        ).slice(0, 10)
-
-        console.log(`Preloading data for ${recentEvents.length} recent events`)
-        await preloadEventData(recentEvents)
+        toast({
+          title: "Database Initialized",
+          description: `Ready to load asset data. ${stats.assetDataCount} assets already cached.`,
+        })
       } catch (error) {
         console.error("Failed to initialize event data:", error)
+        toast({
+          title: "Initialization Error",
+          description: "Failed to initialize database. Some features may not work.",
+          variant: "destructive",
+        })
       }
     }
 
     initializeData()
-  }, [])
+  }, [toast])
 
   const handleAddEvent = () => {
     if (newEvent.name && newEvent.date && newEvent.category) {
@@ -272,6 +277,11 @@ export default function EventAnalysisPage() {
           </div>
         </header>
 
+        {/* Asset Loader Component */}
+        <div className="mb-8">
+          <AssetLoader />
+        </div>
+
         {/* Asset Status Table */}
         <div className="mb-8">
           <AssetStatusTable />
@@ -290,7 +300,7 @@ export default function EventAnalysisPage() {
                   <CardTitle>Select Event to Analyze</CardTitle>
                   <CardDescription>
                     Choose from {events.length} historical events including Middle East conflicts, economic crises, and
-                    policy changes. Analyze impact across 6 major asset classes.
+                    policy changes. Load asset data manually using the Asset Loader above.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">

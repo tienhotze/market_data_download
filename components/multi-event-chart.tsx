@@ -162,19 +162,49 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
         const event = events.find((e) => e.id === eventId)
         if (!event) return null
 
-        // Check if we have cached data
-        const isFresh = await eventDataDB.isDataFresh(eventId, selectedAsset, isManualUpdate ? 0 : 1)
-        let assetData
+        try {
+          // First try to calculate from cached closing prices
+          const calculatedData = await eventDataDB.calculateEventData(selectedAsset, event.date, 30, 90)
 
-        if (isFresh && !isManualUpdate) {
-          const cached = await eventDataDB.getEventData(eventId, selectedAsset)
-          if (cached) {
-            assetData = cached.data
-            console.log(`Using cached data for ${event.name} - ${selectedAsset}`)
+          if (calculatedData && !isManualUpdate) {
+            console.log(`Using cached closing prices for ${event.name} - ${selectedAsset}`)
+
+            // Generate comprehensive data for this event (-30 to +90 days)
+            const eventDate = new Date(event.date)
+            const reindexedData: number[] = []
+
+            for (let i = -30; i <= 90; i++) {
+              const targetDate = new Date(eventDate)
+              targetDate.setDate(eventDate.getDate() + i)
+              const targetDateStr = targetDate.toISOString().split("T")[0]
+
+              // Find data for this date
+              const dataIndex = calculatedData.dates.findIndex((d: string) => d === targetDateStr)
+              if (dataIndex !== -1) {
+                reindexedData.push(calculatedData.reindexed[dataIndex])
+              } else {
+                // Use forward fill logic
+                let lastKnownValue = 100
+                for (let j = dataIndex >= 0 ? dataIndex - 1 : calculatedData.dates.length - 1; j >= 0; j--) {
+                  const checkDate = new Date(calculatedData.dates[j])
+                  if (checkDate <= targetDate) {
+                    lastKnownValue = calculatedData.reindexed[j]
+                    break
+                  }
+                }
+                reindexedData.push(lastKnownValue)
+              }
+            }
+
+            return {
+              eventId: event.id,
+              eventName: event.name,
+              eventDate: event.date,
+              reindexedData,
+            }
           }
-        }
 
-        if (!assetData) {
+          // If no cached data or manual update, fetch fresh data
           console.log(`Fetching fresh data for ${event.name} - ${selectedAsset}`)
           const response = await fetch("/api/event-data", {
             method: "POST",
@@ -190,7 +220,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
           }
 
           const data = await response.json()
-          assetData = data.assets[selectedAsset]
+          const assetData = data.assets[selectedAsset]
 
           if (!assetData) {
             throw new Error(`No data available for ${selectedAsset} in ${event.name}`)
@@ -198,40 +228,43 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
 
           // Store in IndexedDB
           await eventDataDB.storeEventData(eventId, selectedAsset, event.date, assetData)
-        }
 
-        // Generate comprehensive data for this event (-30 to +90 days)
-        const eventDate = new Date(event.date)
-        const reindexedData: number[] = []
+          // Generate comprehensive data for this event (-30 to +90 days)
+          const eventDate = new Date(event.date)
+          const reindexedData: number[] = []
 
-        for (let i = -30; i <= 90; i++) {
-          const targetDate = new Date(eventDate)
-          targetDate.setDate(eventDate.getDate() + i)
-          const targetDateStr = targetDate.toISOString().split("T")[0]
+          for (let i = -30; i <= 90; i++) {
+            const targetDate = new Date(eventDate)
+            targetDate.setDate(eventDate.getDate() + i)
+            const targetDateStr = targetDate.toISOString().split("T")[0]
 
-          // Find data for this date
-          const dataIndex = assetData.dates.findIndex((d: string) => d === targetDateStr)
-          if (dataIndex !== -1) {
-            reindexedData.push(assetData.reindexed[dataIndex])
-          } else {
-            // Use forward fill logic - find closest previous date
-            let lastKnownValue = 100 // Default baseline
-            for (let j = dataIndex >= 0 ? dataIndex - 1 : assetData.dates.length - 1; j >= 0; j--) {
-              const checkDate = new Date(assetData.dates[j])
-              if (checkDate <= targetDate) {
-                lastKnownValue = assetData.reindexed[j]
-                break
+            // Find data for this date
+            const dataIndex = assetData.dates.findIndex((d: string) => d === targetDateStr)
+            if (dataIndex !== -1) {
+              reindexedData.push(assetData.reindexed[dataIndex])
+            } else {
+              // Use forward fill logic
+              let lastKnownValue = 100
+              for (let j = dataIndex >= 0 ? dataIndex - 1 : assetData.dates.length - 1; j >= 0; j--) {
+                const checkDate = new Date(assetData.dates[j])
+                if (checkDate <= targetDate) {
+                  lastKnownValue = assetData.reindexed[j]
+                  break
+                }
               }
+              reindexedData.push(lastKnownValue)
             }
-            reindexedData.push(lastKnownValue)
           }
-        }
 
-        return {
-          eventId: event.id,
-          eventName: event.name,
-          eventDate: event.date,
-          reindexedData,
+          return {
+            eventId: event.id,
+            eventName: event.name,
+            eventDate: event.date,
+            reindexedData,
+          }
+        } catch (error) {
+          console.error(`Failed to process ${event.name}:`, error)
+          return null
         }
       })
 
@@ -277,7 +310,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
 
       setMultiEventData(resultData)
       setLastUpdate(new Date().toLocaleTimeString())
-      setGithubSaveStatus("Data loaded from cache and API")
+      setGithubSaveStatus("Data calculated from cached closing prices")
 
       // Mark initial load as complete
       if (isInitialLoad.current) {
