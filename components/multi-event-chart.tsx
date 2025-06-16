@@ -36,6 +36,7 @@ const AVAILABLE_ASSETS = [
   { id: "Gold", name: "Gold", ticker: "GC=F" },
   { id: "Dollar Index", name: "Dollar Index", ticker: "DX-Y.NYB" },
   { id: "10Y Treasury Yield", name: "10Y Treasury Yield", ticker: "^TNX" },
+  { id: "VIX", name: "VIX", ticker: "^VIX" },
 ]
 
 const EVENT_COLORS = [
