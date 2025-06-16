@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -50,8 +50,8 @@ const ASSET_COLORS = {
   VIX: "#ec4899",
 }
 
-// Cache for storing downloaded data
-let dataCache: DataCache | null = null
+// Global cache for storing downloaded data - persists across component re-renders
+let globalDataCache: DataCache | null = null
 
 export function EventChart({ event }: EventChartProps) {
   const [assetData, setAssetData] = useState<Record<string, AssetData> | null>(null)
@@ -62,28 +62,59 @@ export function EventChart({ event }: EventChartProps) {
   )
   const [lastUpdate, setLastUpdate] = useState<string>("")
 
+  // Track if this is initial session load
+  const isInitialLoad = useRef(true)
+  const lastActionTime = useRef<number>(0)
+
   useEffect(() => {
     if (event) {
-      fetchEventData()
+      handleEventChange()
     }
   }, [event])
 
-  const shouldRefreshData = (): boolean => {
-    if (!dataCache || dataCache.eventDate !== event.date) {
-      return true // No cache or different event
-    }
-
+  const shouldDownloadData = (isManualUpdate = false): boolean => {
     const now = Date.now()
     const oneHour = 60 * 60 * 1000
-    return now - dataCache.lastDownload > oneHour
+
+    // Always download if manual update button pressed
+    if (isManualUpdate) {
+      console.log("Manual update requested - downloading data")
+      return true
+    }
+
+    // Always download on initial session load
+    if (isInitialLoad.current) {
+      console.log("Initial session load - downloading data")
+      return true
+    }
+
+    // Check if we have cached data for this event
+    if (!globalDataCache || globalDataCache.eventDate !== event.date) {
+      console.log("No cache for this event - downloading data")
+      return true
+    }
+
+    // Check if more than 1 hour has passed since last download AND user performed an action
+    const timeSinceLastDownload = now - globalDataCache.lastDownload
+    const timeSinceLastAction = now - lastActionTime.current
+
+    if (timeSinceLastDownload > oneHour && timeSinceLastAction < 5000) {
+      // Action within last 5 seconds
+      console.log("More than 1 hour since last download and recent user action - downloading data")
+      return true
+    }
+
+    console.log("Using cached data - no download needed")
+    return false
   }
 
-  const fetchEventData = async (forceUpdate = false) => {
-    // Check if we can use cached data
-    if (!forceUpdate && dataCache && dataCache.eventDate === event.date && !shouldRefreshData()) {
-      console.log("Using cached data")
-      setAssetData(dataCache.data)
-      setLastUpdate(new Date(dataCache.lastDownload).toLocaleTimeString())
+  const fetchEventData = async (isManualUpdate = false) => {
+    if (!shouldDownloadData(isManualUpdate)) {
+      // Use cached data
+      if (globalDataCache && globalDataCache.eventDate === event.date) {
+        setAssetData(globalDataCache.data)
+        setLastUpdate(new Date(globalDataCache.lastDownload).toLocaleTimeString())
+      }
       return
     }
 
@@ -96,7 +127,7 @@ export function EventChart({ event }: EventChartProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           eventDate: event.date,
-          incrementalUpdate: !forceUpdate && dataCache?.eventDate === event.date,
+          incrementalUpdate: !isManualUpdate && globalDataCache?.eventDate === event.date,
         }),
       })
 
@@ -106,9 +137,9 @@ export function EventChart({ event }: EventChartProps) {
 
       const data = await response.json()
 
-      // Update cache
+      // Update global cache
       const now = Date.now()
-      dataCache = {
+      globalDataCache = {
         data: data.assets,
         lastDownload: now,
         eventDate: event.date,
@@ -116,6 +147,11 @@ export function EventChart({ event }: EventChartProps) {
 
       setAssetData(data.assets)
       setLastUpdate(new Date(now).toLocaleTimeString())
+
+      // Mark initial load as complete
+      if (isInitialLoad.current) {
+        isInitialLoad.current = false
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data")
     } finally {
@@ -123,11 +159,21 @@ export function EventChart({ event }: EventChartProps) {
     }
   }
 
+  const handleEventChange = () => {
+    // Record the time of this action
+    lastActionTime.current = Date.now()
+    fetchEventData(false)
+  }
+
   const handleUpdate = () => {
+    // Manual update - always download
     fetchEventData(true)
   }
 
   const toggleAsset = (assetName: string) => {
+    // Record action time but don't trigger data download
+    lastActionTime.current = Date.now()
+
     const newSelected = new Set(selectedAssets)
     if (newSelected.has(assetName)) {
       newSelected.delete(assetName)

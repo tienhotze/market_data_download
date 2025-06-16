@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -31,7 +31,7 @@ interface MultiEventData {
 }
 
 interface DataCache {
-  data: Record<string, any>
+  data: MultiEventData
   lastDownload: number
   selectedAsset: string
   selectedEvents: string[]
@@ -64,8 +64,8 @@ const EVENT_COLORS = [
   "#6366f1",
 ]
 
-// Cache for storing downloaded data
-let multiEventDataCache: DataCache | null = null
+// Global cache for storing downloaded data - persists across component re-renders
+let globalMultiEventDataCache: DataCache | null = null
 
 export function MultiEventChart({ events }: MultiEventChartProps) {
   const [selectedAsset, setSelectedAsset] = useState("S&P 500")
@@ -74,6 +74,10 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdate, setLastUpdate] = useState<string>("")
+
+  // Track if this is initial session load
+  const isInitialLoad = useRef(true)
+  const lastActionTime = useRef<number>(0)
 
   // Generate day labels from -30 to +60
   const generateDayLabels = (): string[] => {
@@ -88,36 +92,71 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
     return labels
   }
 
-  const shouldRefreshData = (): boolean => {
-    if (!multiEventDataCache) {
-      return true // No cache
-    }
-
+  const shouldDownloadData = (isManualUpdate = false): boolean => {
     const now = Date.now()
     const oneHour = 60 * 60 * 1000
-    const cacheExpired = now - multiEventDataCache.lastDownload > oneHour
+
+    // Always download if manual update button pressed
+    if (isManualUpdate) {
+      console.log("Manual update requested - downloading multi-event data")
+      return true
+    }
+
+    // Always download on initial session load
+    if (isInitialLoad.current) {
+      console.log("Initial session load - downloading multi-event data")
+      return true
+    }
+
+    // No download if no events selected
+    if (selectedEvents.size === 0) {
+      return false
+    }
+
+    // Check if we have cached data for current selection
+    if (!globalMultiEventDataCache) {
+      console.log("No cache available - downloading multi-event data")
+      return true
+    }
 
     // Check if selection changed
     const eventsArray = Array.from(selectedEvents).sort()
-    const cachedEventsArray = multiEventDataCache.selectedEvents.sort()
+    const cachedEventsArray = globalMultiEventDataCache.selectedEvents.sort()
     const selectionChanged =
-      selectedAsset !== multiEventDataCache.selectedAsset ||
+      selectedAsset !== globalMultiEventDataCache.selectedAsset ||
       JSON.stringify(eventsArray) !== JSON.stringify(cachedEventsArray)
 
-    return cacheExpired || selectionChanged
+    if (selectionChanged) {
+      console.log("Selection changed - downloading multi-event data")
+      return true
+    }
+
+    // Check if more than 1 hour has passed since last download AND user performed an action
+    const timeSinceLastDownload = now - globalMultiEventDataCache.lastDownload
+    const timeSinceLastAction = now - lastActionTime.current
+
+    if (timeSinceLastDownload > oneHour && timeSinceLastAction < 5000) {
+      // Action within last 5 seconds
+      console.log("More than 1 hour since last download and recent user action - downloading multi-event data")
+      return true
+    }
+
+    console.log("Using cached multi-event data - no download needed")
+    return false
   }
 
-  const fetchMultiEventData = async (forceUpdate = false) => {
+  const fetchMultiEventData = async (isManualUpdate = false) => {
     if (selectedEvents.size === 0) {
       setMultiEventData(null)
       return
     }
 
-    // Check if we can use cached data
-    if (!forceUpdate && !shouldRefreshData()) {
-      console.log("Using cached multi-event data")
-      setMultiEventData(multiEventDataCache!.data)
-      setLastUpdate(new Date(multiEventDataCache!.lastDownload).toLocaleTimeString())
+    if (!shouldDownloadData(isManualUpdate)) {
+      // Use cached data
+      if (globalMultiEventDataCache) {
+        setMultiEventData(globalMultiEventDataCache.data)
+        setLastUpdate(new Date(globalMultiEventDataCache.lastDownload).toLocaleTimeString())
+      }
       return
     }
 
@@ -134,7 +173,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             eventDate: event.date,
-            incrementalUpdate: !forceUpdate && multiEventDataCache !== null,
+            incrementalUpdate: !isManualUpdate && globalMultiEventDataCache !== null,
           }),
         })
 
@@ -224,9 +263,9 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
         medianData,
       }
 
-      // Update cache
+      // Update global cache
       const now = Date.now()
-      multiEventDataCache = {
+      globalMultiEventDataCache = {
         data: resultData,
         lastDownload: now,
         selectedAsset,
@@ -235,6 +274,11 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
 
       setMultiEventData(resultData)
       setLastUpdate(new Date(now).toLocaleTimeString())
+
+      // Mark initial load as complete
+      if (isInitialLoad.current) {
+        isInitialLoad.current = false
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch multi-event data")
     } finally {
@@ -243,14 +287,20 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
   }
 
   useEffect(() => {
+    // Record the time of this action
+    lastActionTime.current = Date.now()
     fetchMultiEventData()
   }, [selectedEvents, selectedAsset])
 
   const handleUpdate = () => {
+    // Manual update - always download
     fetchMultiEventData(true)
   }
 
   const handleEventToggle = (eventId: string, checked: boolean) => {
+    // Record action time
+    lastActionTime.current = Date.now()
+
     const newSelected = new Set(selectedEvents)
     if (checked) {
       newSelected.add(eventId)
@@ -261,14 +311,21 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
   }
 
   const handleSelectAll = () => {
+    // Record action time
+    lastActionTime.current = Date.now()
     setSelectedEvents(new Set(events.map((e) => e.id)))
   }
 
   const handleClearAll = () => {
+    // Record action time
+    lastActionTime.current = Date.now()
     setSelectedEvents(new Set())
   }
 
   const handleSubgroupToggle = (subgroupEvents: EventData[], checked: boolean) => {
+    // Record action time
+    lastActionTime.current = Date.now()
+
     const newSelected = new Set(selectedEvents)
     subgroupEvents.forEach((event) => {
       if (checked) {
@@ -278,6 +335,12 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
       }
     })
     setSelectedEvents(newSelected)
+  }
+
+  const handleAssetChange = (newAsset: string) => {
+    // Record action time
+    lastActionTime.current = Date.now()
+    setSelectedAsset(newAsset)
   }
 
   // Enhanced event grouping with subgroups
@@ -344,7 +407,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
           {/* Asset Selection */}
           <div className="flex items-center gap-4">
             <label className="text-sm font-medium">Asset:</label>
-            <Select value={selectedAsset} onValueChange={setSelectedAsset}>
+            <Select value={selectedAsset} onValueChange={handleAssetChange}>
               <SelectTrigger className="w-48">
                 <SelectValue />
               </SelectTrigger>
