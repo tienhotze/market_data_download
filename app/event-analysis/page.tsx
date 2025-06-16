@@ -22,6 +22,8 @@ import { EventChart } from "@/components/event-chart"
 import { MultiEventChart } from "@/components/multi-event-chart"
 import type { EventData } from "@/types"
 import { preloadEventData, eventDataDB } from "@/lib/indexeddb"
+import { AssetStatusTable } from "@/components/asset-status-table"
+import { Toaster } from "@/components/ui/toaster"
 
 const DEFAULT_EVENTS: EventData[] = [
   // Sort all events by date (earliest to latest)
@@ -270,6 +272,11 @@ export default function EventAnalysisPage() {
           </div>
         </header>
 
+        {/* Asset Status Table */}
+        <div className="mb-8">
+          <AssetStatusTable />
+        </div>
+
         <div className="max-w-6xl mx-auto space-y-6">
           <Tabs defaultValue="single-event" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
@@ -412,6 +419,7 @@ export default function EventAnalysisPage() {
             </TabsContent>
           </Tabs>
         </div>
+        <Toaster />
       </div>
     </div>
   )

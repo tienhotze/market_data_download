@@ -457,21 +457,31 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
 
                     return (
                       <div key={subgroup} className="space-y-2 ml-2">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`${category}-${subgroup}`}
-                            checked={allSelected}
-                            ref={(el) => {
-                              if (el) el.indeterminate = someSelected && !allSelected
-                            }}
-                            onCheckedChange={(checked) => handleSubgroupToggle(subgroupEvents, checked as boolean)}
-                          />
-                          <label
-                            htmlFor={`${category}-${subgroup}`}
-                            className="text-sm font-semibold text-gray-700 cursor-pointer"
+                        <div className="flex items-center justify-between space-x-2">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`${category}-${subgroup}`}
+                              checked={allSelected}
+                              ref={(el) => {
+                                if (el) el.indeterminate = someSelected && !allSelected
+                              }}
+                              onCheckedChange={(checked) => handleSubgroupToggle(subgroupEvents, checked as boolean)}
+                            />
+                            <label
+                              htmlFor={`${category}-${subgroup}`}
+                              className="text-sm font-semibold text-gray-700 cursor-pointer"
+                            >
+                              {subgroup} ({subgroupEvents.length})
+                            </label>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => handleSubgroupToggle(subgroupEvents, !allSelected)}
                           >
-                            {subgroup} ({subgroupEvents.length})
-                          </label>
+                            {allSelected ? "Deselect All" : "Select All"}
+                          </Button>
                         </div>
                         {subgroupEvents.map((event) => (
                           <div key={event.id} className="flex items-start space-x-2 ml-6">
