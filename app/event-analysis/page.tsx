@@ -260,7 +260,7 @@ export default function EventAnalysisPage() {
                   <CardTitle>Select Event to Analyze</CardTitle>
                   <CardDescription>
                     Choose from {events.length} historical events including Middle East conflicts, economic crises, and
-                    policy changes
+                    policy changes. Analyze impact across 6 major asset classes.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">

@@ -6,6 +6,7 @@ const ASSET_TICKERS = {
   Gold: "GC=F",
   "Dollar Index": "DX-Y.NYB",
   "10Y Treasury Yield": "^TNX",
+  VIX: "^VIX",
 }
 
 export async function POST(request: NextRequest) {
@@ -477,10 +478,12 @@ function filterAndReindexData(data: any[], startDate: Date, endDate: Date, event
 
   let reindexed: number[]
 
-  if (assetName === "10Y Treasury Yield") {
-    // Special formula for bond yields: current - start + 100
+  if (assetName === "10Y Treasury Yield" || assetName === "VIX") {
+    // Special formula for bond yields and VIX: current - start + 100
     reindexed = prices.map((price) => price - eventPrice + 100)
-    console.log(`Reindexed bond yield data: ${reindexed.length} points, event yield: ${eventPrice}%`)
+    console.log(
+      `Reindexed ${assetName} data: ${reindexed.length} points, event ${assetName === "VIX" ? "VIX" : "yield"}: ${eventPrice}${assetName === "10Y Treasury Yield" ? "%" : ""}`,
+    )
   } else {
     // Standard formula for other assets: (current / start) * 100
     reindexed = prices.map((price) => (price / eventPrice) * 100)

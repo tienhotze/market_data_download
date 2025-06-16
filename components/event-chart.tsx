@@ -41,6 +41,7 @@ const ASSET_COLORS = {
   Gold: "#f59e0b",
   "Dollar Index": "#059669",
   "10Y Treasury Yield": "#7c3aed",
+  VIX: "#ec4899",
 }
 
 export function EventChart({ event }: EventChartProps) {
@@ -48,7 +49,7 @@ export function EventChart({ event }: EventChartProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedAssets, setSelectedAssets] = useState<Set<string>>(
-    new Set(["S&P 500", "WTI Crude Oil", "Gold", "Dollar Index", "10Y Treasury Yield"]),
+    new Set(["S&P 500", "WTI Crude Oil", "Gold", "Dollar Index", "10Y Treasury Yield", "VIX"]),
   )
 
   useEffect(() => {
@@ -219,6 +220,8 @@ export function EventChart({ event }: EventChartProps) {
   const formatRawValue = (rawValue: number, assetName: string): string => {
     if (assetName === "10Y Treasury Yield") {
       return `${rawValue.toFixed(3)}%`
+    } else if (assetName === "VIX") {
+      return rawValue.toFixed(2)
     } else if (assetName === "S&P 500") {
       return rawValue.toFixed(0)
     } else if (assetName === "WTI Crude Oil") {
@@ -299,8 +302,8 @@ export function EventChart({ event }: EventChartProps) {
         <CardHeader>
           <CardTitle>Multi-Asset Impact Analysis: {event.name}</CardTitle>
           <CardDescription>
-            Reindexed to 100 on event date ({event.date}). Showing 30 days before to 60 days after. Note: 10Y yield uses
-            additive reindexing (current - start + 100).
+            Reindexed to 100 on event date ({event.date}). Showing 30 days before to 60 days after. Note: 10Y yield and
+            VIX use additive reindexing (current - start + 100).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
