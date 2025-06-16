@@ -16,11 +16,14 @@ interface AssetStatus {
   lastDate: string | null
   dataPoints: number
   cacheAge: string
-  status: "fresh" | "stale" | "missing" | "failed"
+  status: "fresh" | "stale" | "missing" | "yahoo-failed" | "github-failed" | "both-failed"
   failureInfo?: {
-    attempts: number
-    lastError: string
-    nextRetryAvailable: string | null
+    yahooAttempts: number
+    githubAttempts: number
+    lastYahooError: string
+    lastGithubError: string
+    nextYahooRetryAvailable: string | null
+    nextGithubRetryAvailable: string | null
   }
 }
 
@@ -43,7 +46,7 @@ export function AssetStatusTable() {
     }
   }
 
-  const getStatusBadge = (status: "fresh" | "stale" | "missing" | "failed") => {
+  const getStatusBadge = (status: "fresh" | "stale" | "missing" | "yahoo-failed" | "github-failed" | "both-failed") => {
     switch (status) {
       case "fresh":
         return (
@@ -59,16 +62,30 @@ export function AssetStatusTable() {
             Stale
           </Badge>
         )
-      case "failed":
+      case "yahoo-failed":
         return (
           <Badge variant="destructive" className="bg-red-100 text-red-800 border-red-200">
             <AlertTriangle className="h-3 w-3 mr-1" />
-            Failed
+            Yahoo Failed
+          </Badge>
+        )
+      case "github-failed":
+        return (
+          <Badge variant="destructive" className="bg-orange-100 text-orange-800 border-orange-200">
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            GitHub Failed
+          </Badge>
+        )
+      case "both-failed":
+        return (
+          <Badge variant="destructive" className="bg-red-100 text-red-800 border-red-200">
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            Both Failed
           </Badge>
         )
       case "missing":
         return (
-          <Badge variant="destructive" className="bg-red-100 text-red-800 border-red-200">
+          <Badge variant="destructive" className="bg-gray-100 text-gray-800 border-gray-200">
             <AlertTriangle className="h-3 w-3 mr-1" />
             Missing
           </Badge>
@@ -111,27 +128,36 @@ export function AssetStatusTable() {
         const assetData = await eventDataDB.getAssetPriceData(assetName)
         const failureInfo = failures[assetName]
 
-        if (failureInfo && failureInfo.failed) {
-          // Asset has failed
-          statuses.push({
-            name: assetName,
-            ticker,
-            lastPrice: null,
-            lastDate: null,
-            dataPoints: assetData?.data.length || 0,
-            cacheAge: failureInfo.nextRetryAvailable
-              ? `Retry available: ${new Date(failureInfo.nextRetryAvailable).toLocaleTimeString()}`
-              : `Failed ${calculateCacheAge(failureInfo.lastAttempt)}`,
-            status: "failed",
-            failureInfo: {
-              attempts: failureInfo.attempts,
-              lastError: failureInfo.lastError,
-              nextRetryAvailable: failureInfo.nextRetryAvailable,
-            },
-          })
-        } else if (assetData && assetData.data.length > 0) {
+        let status: AssetStatus["status"] = "missing"
+        let failureDetails = undefined
+
+        if (failureInfo) {
+          const yahooFailed = failureInfo.yahooFailed || false
+          const githubFailed = failureInfo.githubFailed || false
+
+          if (yahooFailed && githubFailed) {
+            status = "both-failed"
+          } else if (yahooFailed) {
+            status = "yahoo-failed"
+          } else if (githubFailed) {
+            status = "github-failed"
+          }
+
+          if (yahooFailed || githubFailed) {
+            failureDetails = {
+              yahooAttempts: failureInfo.yahooAttempts || 0,
+              githubAttempts: failureInfo.githubAttempts || 0,
+              lastYahooError: failureInfo.lastYahooError || "",
+              lastGithubError: failureInfo.lastGithubError || "",
+              nextYahooRetryAvailable: failureInfo.nextYahooRetryAvailable,
+              nextGithubRetryAvailable: failureInfo.nextGithubRetryAvailable,
+            }
+          }
+        }
+
+        if (assetData && assetData.data.length > 0 && status === "missing") {
           const lastDataPoint = assetData.data[assetData.data.length - 1]
-          const status = getStatus(assetData.timestamp)
+          status = getStatus(assetData.timestamp)
 
           statuses.push({
             name: assetName,
@@ -141,6 +167,7 @@ export function AssetStatusTable() {
             dataPoints: assetData.data.length,
             cacheAge: calculateCacheAge(assetData.timestamp),
             status,
+            failureInfo: failureDetails,
           })
         } else {
           statuses.push({
@@ -148,9 +175,12 @@ export function AssetStatusTable() {
             ticker,
             lastPrice: null,
             lastDate: null,
-            dataPoints: 0,
-            cacheAge: "Never",
-            status: "missing",
+            dataPoints: assetData?.data.length || 0,
+            cacheAge: failureInfo
+              ? `Failed ${calculateCacheAge(Math.max(failureInfo.lastYahooAttempt || 0, failureInfo.lastGithubAttempt || 0))}`
+              : "Never",
+            status,
+            failureInfo: failureDetails,
           })
         }
       }
@@ -208,7 +238,10 @@ export function AssetStatusTable() {
   const freshCount = assetStatuses.filter((asset) => asset.status === "fresh").length
   const staleCount = assetStatuses.filter((asset) => asset.status === "stale").length
   const missingCount = assetStatuses.filter((asset) => asset.status === "missing").length
-  const failedCount = assetStatuses.filter((asset) => asset.status === "failed").length
+  const yahooFailedCount = assetStatuses.filter((asset) => asset.status === "yahoo-failed").length
+  const githubFailedCount = assetStatuses.filter((asset) => asset.status === "github-failed").length
+  const bothFailedCount = assetStatuses.filter((asset) => asset.status === "both-failed").length
+  const totalFailedCount = yahooFailedCount + githubFailedCount + bothFailedCount
 
   return (
     <Card>
@@ -236,7 +269,7 @@ export function AssetStatusTable() {
         ) : (
           <>
             {/* Summary Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
               <div className="text-center p-3 bg-gray-50 rounded-lg">
                 <div className="text-2xl font-bold text-gray-900">{totalDataPoints.toLocaleString()}</div>
                 <div className="text-sm text-gray-600">Total Data Points</div>
@@ -250,8 +283,12 @@ export function AssetStatusTable() {
                 <div className="text-sm text-gray-600">Stale Assets</div>
               </div>
               <div className="text-center p-3 bg-red-50 rounded-lg">
-                <div className="text-2xl font-bold text-red-600">{failedCount}</div>
-                <div className="text-sm text-gray-600">Failed Assets</div>
+                <div className="text-2xl font-bold text-red-600">{yahooFailedCount}</div>
+                <div className="text-sm text-gray-600">Yahoo Failed</div>
+              </div>
+              <div className="text-center p-3 bg-orange-50 rounded-lg">
+                <div className="text-2xl font-bold text-orange-600">{githubFailedCount}</div>
+                <div className="text-sm text-gray-600">GitHub Failed</div>
               </div>
               <div className="text-center p-3 bg-gray-50 rounded-lg">
                 <div className="text-2xl font-bold text-gray-600">{missingCount}</div>
@@ -280,15 +317,24 @@ export function AssetStatusTable() {
                           <div className="font-semibold">{asset.name}</div>
                           <div className="text-xs text-gray-500">{asset.ticker}</div>
                           {asset.failureInfo && (
-                            <div className="text-xs text-red-600 mt-1">
-                              {asset.failureInfo.attempts}/3 attempts failed
+                            <div className="text-xs mt-1 space-y-1">
+                              {asset.failureInfo.yahooAttempts > 0 && (
+                                <div className="text-red-600">Yahoo: {asset.failureInfo.yahooAttempts}/3 attempts</div>
+                              )}
+                              {asset.failureInfo.githubAttempts > 0 && (
+                                <div className="text-orange-600">
+                                  GitHub: {asset.failureInfo.githubAttempts}/3 attempts
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
                       </TableCell>
                       <TableCell className="text-center">{getStatusBadge(asset.status)}</TableCell>
                       <TableCell className="text-right font-mono">
-                        {asset.status === "failed" ? (
+                        {asset.status === "yahoo-failed" ||
+                        asset.status === "github-failed" ||
+                        asset.status === "both-failed" ? (
                           <span className="text-red-600 text-sm">API Limit</span>
                         ) : (
                           formatPrice(asset.lastPrice, asset.name)
@@ -310,11 +356,18 @@ export function AssetStatusTable() {
                         >
                           {asset.cacheAge}
                         </span>
-                        {asset.failureInfo && asset.failureInfo.lastError && (
-                          <div className="text-xs text-red-600 mt-1" title={asset.failureInfo.lastError}>
-                            {asset.failureInfo.lastError.length > 30
-                              ? `${asset.failureInfo.lastError.substring(0, 30)}...`
-                              : asset.failureInfo.lastError}
+                        {asset.failureInfo && asset.failureInfo.lastYahooError && (
+                          <div className="text-xs text-red-600 mt-1" title={asset.failureInfo.lastYahooError}>
+                            {asset.failureInfo.lastYahooError.length > 30
+                              ? `${asset.failureInfo.lastYahooError.substring(0, 30)}...`
+                              : asset.failureInfo.lastYahooError}
+                          </div>
+                        )}
+                        {asset.failureInfo && asset.failureInfo.lastGithubError && (
+                          <div className="text-xs text-orange-600 mt-1" title={asset.failureInfo.lastGithubError}>
+                            {asset.failureInfo.lastGithubError.length > 30
+                              ? `${asset.failureInfo.lastGithubError.substring(0, 30)}...`
+                              : asset.failureInfo.lastGithubError}
                           </div>
                         )}
                       </TableCell>
@@ -325,15 +378,17 @@ export function AssetStatusTable() {
             </div>
 
             {/* Warning for stale/failed data */}
-            {(staleCount > 0 || missingCount > 0 || failedCount > 0) && (
+            {(staleCount > 0 || missingCount > 0 || totalFailedCount > 0) && (
               <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 text-yellow-600" />
                   <span className="text-sm text-yellow-800">
-                    {failedCount > 0 ? `${failedCount} asset(s) failed after 3 attempts. ` : ""}
+                    {bothFailedCount > 0 ? `${bothFailedCount} asset(s) failed on both APIs. ` : ""}
+                    {yahooFailedCount > 0 ? `${yahooFailedCount} asset(s) failed on Yahoo Finance. ` : ""}
+                    {githubFailedCount > 0 ? `${githubFailedCount} asset(s) failed on GitHub API. ` : ""}
                     {missingCount > 0 ? `${missingCount} asset(s) missing data. ` : ""}
                     {staleCount > 0 ? `${staleCount} asset(s) have stale data. ` : ""}
-                    {failedCount > 0
+                    {totalFailedCount > 0
                       ? "Failed assets are in cooldown period. Try refreshing later."
                       : "Consider refreshing the cache for the latest market data."}
                   </span>

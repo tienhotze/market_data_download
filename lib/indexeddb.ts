@@ -43,11 +43,16 @@ interface EventDataStore {
 interface AssetFailureInfo {
   assetName: string
   ticker: string
-  attempts: number
-  lastAttempt: number
-  failed: boolean
-  lastError: string
-  nextRetryAvailable: string | null
+  yahooAttempts: number
+  githubAttempts: number
+  lastYahooAttempt: number
+  lastGithubAttempt: number
+  yahooFailed: boolean
+  githubFailed: boolean
+  lastYahooError: string
+  lastGithubError: string
+  nextYahooRetryAvailable: string | null
+  nextGithubRetryAvailable: string | null
 }
 
 class EventDataDB {
@@ -358,7 +363,7 @@ class EventDataDB {
   }
 
   // Asset failure tracking methods
-  async storeAssetFailure(
+  async storeGithubFailure(
     assetName: string,
     ticker: string,
     attempts: number,
@@ -367,25 +372,102 @@ class EventDataDB {
   ): Promise<void> {
     if (!this.db) await this.init()
 
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       const transaction = this.db!.transaction(["assetFailures"], "readwrite")
       const store = transaction.objectStore("assetFailures")
 
-      const failureInfo: AssetFailureInfo = {
-        assetName,
-        ticker,
-        attempts,
-        lastAttempt: Date.now(),
-        failed: attempts >= 3,
-        lastError,
-        nextRetryAvailable,
+      // Get existing failure info or create new
+      const existingRequest = store.get(assetName)
+      existingRequest.onsuccess = () => {
+        const existing = existingRequest.result || {
+          assetName,
+          ticker,
+          yahooAttempts: 0,
+          githubAttempts: 0,
+          lastYahooAttempt: 0,
+          lastGithubAttempt: 0,
+          yahooFailed: false,
+          githubFailed: false,
+          lastYahooError: "",
+          lastGithubError: "",
+          nextYahooRetryAvailable: null,
+          nextGithubRetryAvailable: null,
+        }
+
+        const failureInfo: AssetFailureInfo = {
+          ...existing,
+          githubAttempts: attempts,
+          lastGithubAttempt: Date.now(),
+          githubFailed: attempts >= 3,
+          lastGithubError: lastError,
+          nextGithubRetryAvailable: nextRetryAvailable,
+        }
+
+        const putRequest = store.put(failureInfo)
+        putRequest.onerror = () => reject(putRequest.error)
+        putRequest.onsuccess = () => resolve()
       }
-
-      const request = store.put(failureInfo)
-
-      request.onerror = () => reject(request.error)
-      request.onsuccess = () => resolve()
+      existingRequest.onerror = () => reject(existingRequest.error)
     })
+  }
+
+  async storeYahooFailure(
+    assetName: string,
+    ticker: string,
+    attempts: number,
+    lastError: string,
+    nextRetryAvailable: string | null = null,
+  ): Promise<void> {
+    if (!this.db) await this.init()
+
+    return new Promise(async (resolve, reject) => {
+      const transaction = this.db!.transaction(["assetFailures"], "readwrite")
+      const store = transaction.objectStore("assetFailures")
+
+      // Get existing failure info or create new
+      const existingRequest = store.get(assetName)
+      existingRequest.onsuccess = () => {
+        const existing = existingRequest.result || {
+          assetName,
+          ticker,
+          yahooAttempts: 0,
+          githubAttempts: 0,
+          lastYahooAttempt: 0,
+          lastGithubAttempt: 0,
+          yahooFailed: false,
+          githubFailed: false,
+          lastYahooError: "",
+          lastGithubError: "",
+          nextYahooRetryAvailable: null,
+          nextGithubRetryAvailable: null,
+        }
+
+        const failureInfo: AssetFailureInfo = {
+          ...existing,
+          yahooAttempts: attempts,
+          lastYahooAttempt: Date.now(),
+          yahooFailed: attempts >= 3,
+          lastYahooError: lastError,
+          nextYahooRetryAvailable: nextRetryAvailable,
+        }
+
+        const putRequest = store.put(failureInfo)
+        putRequest.onerror = () => reject(putRequest.error)
+        putRequest.onsuccess = () => resolve()
+      }
+      existingRequest.onerror = () => reject(existingRequest.error)
+    })
+  }
+
+  async storeAssetFailure(
+    assetName: string,
+    ticker: string,
+    attempts: number,
+    lastError: string,
+    nextRetryAvailable: string | null = null,
+  ): Promise<void> {
+    // This method is deprecated, use storeYahooFailure or storeGithubFailure instead
+    return this.storeYahooFailure(assetName, ticker, attempts, lastError, nextRetryAvailable)
   }
 
   async getAssetFailure(assetName: string): Promise<AssetFailureInfo | null> {
@@ -581,7 +663,7 @@ export async function preloadEventData(events: Array<{ id: string; date: string;
 
 // Refresh all asset data using GitHub first, then Yahoo Finance with retry limits
 export const refreshAllAssetData = async () => {
-  console.log("Refreshing all asset data with throttled Yahoo Finance calls")
+  console.log("Refreshing all asset data with throttled GitHub and Yahoo Finance calls")
 
   const refreshPromises: Promise<void>[] = []
   const MAX_RETRIES = 3
@@ -595,93 +677,122 @@ export const refreshAllAssetData = async () => {
 
           // Check if asset has failed recently
           const failureInfo = await eventDataDB.getAssetFailure(assetName)
-          if (failureInfo && failureInfo.failed) {
+          if (failureInfo) {
             const now = Date.now()
             const cooldownPeriod = 5 * 60 * 1000 // 5 minutes
 
-            if (now - failureInfo.lastAttempt < cooldownPeriod) {
-              console.log(`Skipping ${assetName} - in cooldown period after ${failureInfo.attempts} failed attempts`)
+            const yahooInCooldown = failureInfo.yahooFailed && now - failureInfo.lastYahooAttempt < cooldownPeriod
+            const githubInCooldown = failureInfo.githubFailed && now - failureInfo.lastGithubAttempt < cooldownPeriod
+
+            if (yahooInCooldown && githubInCooldown) {
+              console.log(`Skipping ${assetName} - both APIs in cooldown period`)
               return
-            } else {
-              // Clear old failure info after cooldown
+            }
+
+            // Clear old failure info after cooldown
+            if (!yahooInCooldown && !githubInCooldown) {
               await eventDataDB.clearAssetFailure(assetName)
             }
           }
 
-          // Try to get data from GitHub first, then Yahoo Finance
-          const response = await fetch("/api/download", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              tickers: [ticker],
-              period: "max",
-              extraData: false,
-            }),
-          })
+          // Try GitHub first
+          let githubSuccess = false
+          if (!failureInfo?.githubFailed || Date.now() - failureInfo.lastGithubAttempt > 5 * 60 * 1000) {
+            try {
+              const githubResponse = await fetch("/api/check-repo-data", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ticker }),
+              })
 
-          if (response.ok) {
-            const data = await response.json()
+              if (githubResponse.ok) {
+                const githubData = await githubResponse.json()
+                if (githubData.data && githubData.data.length > 0) {
+                  const dateRange = {
+                    start: githubData.data[0].date,
+                    end: githubData.data[githubData.data.length - 1].date,
+                  }
 
-            if (data.data && data.data.length > 0) {
-              const dateRange = {
-                start: data.data[0].Date,
-                end: data.data[data.data.length - 1].Date,
+                  await eventDataDB.storeAssetPriceData(assetName, ticker, githubData.data, dateRange)
+                  githubSuccess = true
+                  console.log(`Updated ${assetName} from GitHub: ${githubData.data.length} data points`)
+                }
+              } else if (githubResponse.status === 429) {
+                const errorData = await githubResponse.json()
+                await eventDataDB.storeGithubFailure(
+                  assetName,
+                  ticker,
+                  errorData.retryInfo.attempts,
+                  errorData.error,
+                  errorData.retryInfo.nextRetryAvailable,
+                )
+                console.log(`GitHub API limit reached for ${assetName}`)
               }
-
-              // Convert Yahoo Finance format to our format
-              const priceData = data.data.map((row: any) => ({
-                date: row.Date,
-                open: row.Open,
-                high: row.High,
-                low: row.Low,
-                close: row.Close,
-                volume: row.Volume || 0,
-              }))
-
-              await eventDataDB.storeAssetPriceData(assetName, ticker, priceData, dateRange)
-
-              // Clear any previous failure info on success
-              await eventDataDB.clearAssetFailure(assetName)
-
-              console.log(
-                `Updated cache for ${assetName}: ${priceData.length} data points (${dateRange.start} to ${dateRange.end}) from ${data.source}`,
-              )
-            } else {
-              console.log(`No price data received for ${assetName}`)
+            } catch (githubError) {
+              console.error(`GitHub failed for ${assetName}:`, githubError)
             }
-          } else {
-            const errorData = await response.json()
-            console.error(`Failed to refresh data for ${assetName}:`, response.status, errorData)
+          }
 
-            // Track failure if it's a retry limit error
-            if (response.status === 429 && errorData.retryInfo) {
-              await eventDataDB.storeAssetFailure(
-                assetName,
-                ticker,
-                errorData.retryInfo.attempts,
-                errorData.error,
-                errorData.retryInfo.nextRetryAvailable,
-              )
+          // Try Yahoo Finance if GitHub failed or no data
+          if (
+            !githubSuccess &&
+            (!failureInfo?.yahooFailed || Date.now() - failureInfo.lastYahooAttempt > 5 * 60 * 1000)
+          ) {
+            try {
+              const yahooResponse = await fetch("/api/download", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  tickers: [ticker],
+                  period: "max",
+                  extraData: false,
+                }),
+              })
+
+              if (yahooResponse.ok) {
+                const yahooData = await yahooResponse.json()
+                if (yahooData.data && yahooData.data.length > 0) {
+                  const dateRange = {
+                    start: yahooData.data[0].Date,
+                    end: yahooData.data[yahooData.data.length - 1].Date,
+                  }
+
+                  const priceData = yahooData.data.map((row: any) => ({
+                    date: row.Date,
+                    open: row.Open,
+                    high: row.High,
+                    low: row.Low,
+                    close: row.Close,
+                    volume: row.Volume || 0,
+                  }))
+
+                  await eventDataDB.storeAssetPriceData(assetName, ticker, priceData, dateRange)
+                  console.log(`Updated ${assetName} from Yahoo Finance: ${priceData.length} data points`)
+                }
+              } else if (yahooResponse.status === 429) {
+                const errorData = await yahooResponse.json()
+                await eventDataDB.storeYahooFailure(
+                  assetName,
+                  ticker,
+                  errorData.retryInfo.attempts,
+                  errorData.error,
+                  errorData.retryInfo.nextRetryAvailable,
+                )
+                console.log(`Yahoo Finance API limit reached for ${assetName}`)
+              }
+            } catch (yahooError) {
+              console.error(`Yahoo Finance failed for ${assetName}:`, yahooError)
             }
           }
         } catch (error) {
           console.error(`Failed to refresh ${assetName}:`, error)
-
-          // Track unexpected failures
-          await eventDataDB.storeAssetFailure(
-            assetName,
-            ASSET_TICKERS[assetName as keyof typeof ASSET_TICKERS],
-            1,
-            error instanceof Error ? error.message : "Unknown error",
-            null,
-          )
         }
       })(),
     )
   }
 
-  // Execute in batches to avoid overwhelming the API
-  const batchSize = 2 // Conservative batch size
+  // Execute in batches to avoid overwhelming the APIs
+  const batchSize = 2
   for (let i = 0; i < refreshPromises.length; i += batchSize) {
     const batch = refreshPromises.slice(i, i + batchSize)
 
@@ -693,9 +804,9 @@ export const refreshAllAssetData = async () => {
 
     // Delay between batches
     if (i + batchSize < refreshPromises.length) {
-      await new Promise((resolve) => setTimeout(resolve, 2000)) // Increased delay
+      await new Promise((resolve) => setTimeout(resolve, 2000))
     }
   }
 
-  console.log("All asset data refresh completed with throttling")
+  console.log("All asset data refresh completed with GitHub and Yahoo Finance throttling")
 }
