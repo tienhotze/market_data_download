@@ -22,7 +22,6 @@ import { EventChart } from "@/components/event-chart"
 import { MultiEventChart } from "@/components/multi-event-chart"
 import type { EventData } from "@/types"
 import { eventDataDB } from "@/lib/indexeddb"
-import { AssetStatusTable } from "@/components/asset-status-table"
 import { AssetLoader } from "@/components/asset-loader"
 import { Toaster } from "@/components/ui/toaster"
 import { useToast } from "@/hooks/use-toast"
@@ -280,11 +279,6 @@ export default function EventAnalysisPage() {
         {/* Asset Loader Component */}
         <div className="mb-8">
           <AssetLoader />
-        </div>
-
-        {/* Asset Status Table */}
-        <div className="mb-8">
-          <AssetStatusTable />
         </div>
 
         <div className="max-w-6xl mx-auto space-y-6">

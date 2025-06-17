@@ -163,7 +163,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
         if (!event) return null
 
         try {
-          // First try to calculate from cached closing prices
+          // Always try to calculate from cached closing prices first
           const calculatedData = await eventDataDB.calculateEventData(selectedAsset, event.date, 30, 90)
 
           if (calculatedData && !isManualUpdate) {
@@ -185,7 +185,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
               } else {
                 // Use forward fill logic
                 let lastKnownValue = 100
-                for (let j = dataIndex >= 0 ? dataIndex - 1 : calculatedData.dates.length - 1; j >= 0; j--) {
+                for (let j = calculatedData.dates.length - 1; j >= 0; j--) {
                   const checkDate = new Date(calculatedData.dates[j])
                   if (checkDate <= targetDate) {
                     lastKnownValue = calculatedData.reindexed[j]
@@ -204,32 +204,68 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
             }
           }
 
-          // If no cached data or manual update, fetch fresh data
-          console.log(`Fetching fresh data for ${event.name} - ${selectedAsset}`)
-          const response = await fetch("/api/event-data", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          // Only fetch fresh data if manual update or no cached data
+          if (isManualUpdate || !calculatedData) {
+            console.log(`Fetching fresh data for ${event.name} - ${selectedAsset}`)
+            const response = await fetch("/api/event-data", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                eventDate: event.date,
+                assetsToFetch: [selectedAsset],
+              }),
+            })
+
+            if (!response.ok) {
+              throw new Error(`Failed to fetch data for ${event.name}`)
+            }
+
+            const data = await response.json()
+            const assetData = data.assets[selectedAsset]
+
+            if (!assetData) {
+              throw new Error(`No data available for ${selectedAsset} in ${event.name}`)
+            }
+
+            // Store in IndexedDB for future use
+            await eventDataDB.storeEventData(eventId, selectedAsset, event.date, assetData)
+
+            // Generate comprehensive data for this event (-30 to +90 days)
+            const eventDate = new Date(event.date)
+            const reindexedData: number[] = []
+
+            for (let i = -30; i <= 90; i++) {
+              const targetDate = new Date(eventDate)
+              targetDate.setDate(eventDate.getDate() + i)
+              const targetDateStr = targetDate.toISOString().split("T")[0]
+
+              // Find data for this date
+              const dataIndex = assetData.dates.findIndex((d: string) => d === targetDateStr)
+              if (dataIndex !== -1) {
+                reindexedData.push(assetData.reindexed[dataIndex])
+              } else {
+                // Use forward fill logic
+                let lastKnownValue = 100
+                for (let j = assetData.dates.length - 1; j >= 0; j--) {
+                  const checkDate = new Date(assetData.dates[j])
+                  if (checkDate <= targetDate) {
+                    lastKnownValue = assetData.reindexed[j]
+                    break
+                  }
+                }
+                reindexedData.push(lastKnownValue)
+              }
+            }
+
+            return {
+              eventId: event.id,
+              eventName: event.name,
               eventDate: event.date,
-              assetsToFetch: [selectedAsset],
-            }),
-          })
-
-          if (!response.ok) {
-            throw new Error(`Failed to fetch data for ${event.name}`)
+              reindexedData,
+            }
           }
 
-          const data = await response.json()
-          const assetData = data.assets[selectedAsset]
-
-          if (!assetData) {
-            throw new Error(`No data available for ${selectedAsset} in ${event.name}`)
-          }
-
-          // Store in IndexedDB
-          await eventDataDB.storeEventData(eventId, selectedAsset, event.date, assetData)
-
-          // Generate comprehensive data for this event (-30 to +90 days)
+          // Use calculated data from cache
           const eventDate = new Date(event.date)
           const reindexedData: number[] = []
 
@@ -239,16 +275,16 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
             const targetDateStr = targetDate.toISOString().split("T")[0]
 
             // Find data for this date
-            const dataIndex = assetData.dates.findIndex((d: string) => d === targetDateStr)
+            const dataIndex = calculatedData.dates.findIndex((d: string) => d === targetDateStr)
             if (dataIndex !== -1) {
-              reindexedData.push(assetData.reindexed[dataIndex])
+              reindexedData.push(calculatedData.reindexed[dataIndex])
             } else {
               // Use forward fill logic
               let lastKnownValue = 100
-              for (let j = dataIndex >= 0 ? dataIndex - 1 : assetData.dates.length - 1; j >= 0; j--) {
-                const checkDate = new Date(assetData.dates[j])
+              for (let j = calculatedData.dates.length - 1; j >= 0; j--) {
+                const checkDate = new Date(calculatedData.dates[j])
                 if (checkDate <= targetDate) {
-                  lastKnownValue = assetData.reindexed[j]
+                  lastKnownValue = calculatedData.reindexed[j]
                   break
                 }
               }
@@ -264,7 +300,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
           }
         } catch (error) {
           console.error(`Failed to process ${event.name}:`, error)
-          return null // Skip this event if no data available
+          return null
         }
       })
 
@@ -272,7 +308,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
       const validEventData = eventDataResults.filter((data): data is EventAssetData => data !== null)
 
       if (validEventData.length === 0) {
-        throw new Error("No valid event data found - no mock data will be generated")
+        throw new Error("No valid event data found")
       }
 
       // Calculate average and median for each day
@@ -310,9 +346,8 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
 
       setMultiEventData(resultData)
       setLastUpdate(new Date().toLocaleTimeString())
-      setGithubSaveStatus("Data calculated from cached closing prices")
+      setGithubSaveStatus(`Data calculated from cached closing prices for ${validEventData.length} events`)
 
-      // Mark initial load as complete
       if (isInitialLoad.current) {
         isInitialLoad.current = false
       }

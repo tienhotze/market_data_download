@@ -198,8 +198,9 @@ class EventDataDB {
     return now - data.timestamp < maxAge
   }
 
-  // Calculate reindexed data on-demand from closing prices
+  // Calculate reindexed data on-demand from closing prices with detailed debugging
   async calculateEventData(
+    eventId: string,
     assetName: string,
     eventDate: string,
     daysBeforeEvent = 30,
@@ -210,58 +211,130 @@ class EventDataDB {
     reindexed: number[]
     eventPrice: number
   } | null> {
-    const assetData = await this.getAssetClosingPrices(assetName)
-    if (!assetData) return null
+    console.log(`🔍 [calculateEventData] Starting calculation for ${assetName}`)
+    console.log(`   Event: ${eventId}, Date: ${eventDate}`)
+    console.log(`   Range: -${daysBeforeEvent} to +${daysAfterEvent} days`)
 
-    const eventDateObj = new Date(eventDate)
-    const startDate = new Date(eventDateObj)
-    startDate.setDate(startDate.getDate() - daysBeforeEvent)
-    const endDate = new Date(eventDateObj)
-    endDate.setDate(endDate.getDate() + daysAfterEvent)
+    try {
+      // Step 1: Get cached closing prices
+      console.log(`📊 [calculateEventData] Fetching cached closing prices for ${assetName}`)
+      const assetData = await this.getAssetClosingPrices(assetName)
 
-    // Filter prices within the date range
-    const relevantPrices = assetData.closingPrices.filter((price) => {
-      const priceDate = new Date(price.date)
-      return priceDate >= startDate && priceDate <= endDate
-    })
-
-    if (relevantPrices.length === 0) return null
-
-    // Sort by date
-    relevantPrices.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-
-    // Find the event date price (or closest available)
-    let eventPrice = relevantPrices[0].close
-    let eventDateIndex = -1
-
-    for (let i = 0; i < relevantPrices.length; i++) {
-      const priceDate = new Date(relevantPrices[i].date)
-      if (priceDate <= eventDateObj) {
-        eventPrice = relevantPrices[i].close
-        eventDateIndex = i
-      } else {
-        break
+      if (!assetData) {
+        console.log(`❌ [calculateEventData] No cached closing prices found for ${assetName}`)
+        return null
       }
-    }
 
-    // Calculate reindexed values
-    const dates = relevantPrices.map((p) => p.date)
-    const prices = relevantPrices.map((p) => p.close)
-    const reindexed = prices.map((price) => {
-      // Special handling for yield and VIX (additive reindexing)
-      if (assetName === "10Y Treasury Yield" || assetName === "VIX") {
-        return price - eventPrice + 100
-      } else {
-        // Multiplicative reindexing for other assets
-        return (price / eventPrice) * 100
+      console.log(`✅ [calculateEventData] Found cached data for ${assetName}:`)
+      console.log(`   Total closing prices: ${assetData.closingPrices.length}`)
+      console.log(`   Date range: ${assetData.dateRange.start} to ${assetData.dateRange.end}`)
+      console.log(`   Data age: ${Math.round((Date.now() - assetData.timestamp) / (1000 * 60 * 60))} hours`)
+
+      // Step 2: Calculate date range for event analysis
+      const eventDateObj = new Date(eventDate)
+      const startDate = new Date(eventDateObj)
+      startDate.setDate(startDate.getDate() - daysBeforeEvent)
+      const endDate = new Date(eventDateObj)
+      endDate.setDate(endDate.getDate() + daysAfterEvent)
+
+      console.log(`📅 [calculateEventData] Analysis date range:`)
+      console.log(`   Start: ${startDate.toISOString().split("T")[0]}`)
+      console.log(`   Event: ${eventDate}`)
+      console.log(`   End: ${endDate.toISOString().split("T")[0]}`)
+
+      // Step 3: Filter prices within the date range
+      console.log(`🔍 [calculateEventData] Filtering prices within date range...`)
+      const relevantPrices = assetData.closingPrices.filter((price) => {
+        const priceDate = new Date(price.date)
+        return priceDate >= startDate && priceDate <= endDate
+      })
+
+      console.log(`📈 [calculateEventData] Filtered results:`)
+      console.log(`   Relevant prices found: ${relevantPrices.length}`)
+
+      if (relevantPrices.length === 0) {
+        console.log(`❌ [calculateEventData] No prices found in date range for ${assetName}`)
+        return null
       }
-    })
 
-    return {
-      dates,
-      prices,
-      reindexed,
-      eventPrice,
+      // Step 4: Sort by date
+      relevantPrices.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      console.log(`   First price: ${relevantPrices[0].date} = ${relevantPrices[0].close}`)
+      console.log(
+        `   Last price: ${relevantPrices[relevantPrices.length - 1].date} = ${relevantPrices[relevantPrices.length - 1].close}`,
+      )
+
+      // Step 5: Find the event date price (or closest available before/on event date)
+      console.log(`🎯 [calculateEventData] Finding event date price...`)
+      let eventPrice = relevantPrices[0].close
+      let eventDateIndex = -1
+      let eventPriceDate = relevantPrices[0].date
+
+      for (let i = 0; i < relevantPrices.length; i++) {
+        const priceDate = new Date(relevantPrices[i].date)
+        if (priceDate <= eventDateObj) {
+          eventPrice = relevantPrices[i].close
+          eventDateIndex = i
+          eventPriceDate = relevantPrices[i].date
+        } else {
+          break
+        }
+      }
+
+      console.log(`🎯 [calculateEventData] Event price determination:`)
+      console.log(`   Event price: ${eventPrice} (from ${eventPriceDate})`)
+      console.log(`   Event date index: ${eventDateIndex}`)
+
+      if (eventPrice === 0) {
+        console.log(`❌ [calculateEventData] Event price is zero for ${assetName}, cannot calculate reindexed values`)
+        return null
+      }
+
+      // Step 6: Calculate reindexed values with proper handling for different asset types
+      console.log(`🧮 [calculateEventData] Calculating reindexed values...`)
+      const dates = relevantPrices.map((p) => p.date)
+      const prices = relevantPrices.map((p) => p.close)
+
+      const isAdditiveAsset = assetName === "10Y Treasury Yield" || assetName === "VIX"
+      console.log(`   Asset type: ${isAdditiveAsset ? "Additive (10Y/VIX)" : "Multiplicative"}`)
+
+      const reindexed = prices.map((price, index) => {
+        let reindexedValue: number
+
+        if (isAdditiveAsset) {
+          // Additive reindexing: current - baseline + 100
+          reindexedValue = price - eventPrice + 100
+        } else {
+          // Multiplicative reindexing for other assets: (current / baseline) * 100
+          reindexedValue = eventPrice !== 0 ? (price / eventPrice) * 100 : 100
+        }
+
+        // Log first few and last few calculations for debugging
+        if (index < 3 || index >= prices.length - 3) {
+          console.log(`   [${index}] ${dates[index]}: ${price} → ${reindexedValue.toFixed(2)}`)
+        }
+
+        return reindexedValue
+      })
+
+      const result = {
+        dates,
+        prices,
+        reindexed,
+        eventPrice,
+      }
+
+      console.log(`✅ [calculateEventData] Calculation completed for ${assetName}:`)
+      console.log(`   Data points: ${result.dates.length}`)
+      console.log(`   Event price: ${result.eventPrice}`)
+      console.log(
+        `   Reindexed range: ${Math.min(...result.reindexed).toFixed(2)} to ${Math.max(...result.reindexed).toFixed(2)}`,
+      )
+
+      return result
+    } catch (error) {
+      console.error(`❌ [calculateEventData] Error calculating data for ${assetName}:`, error)
+      return null
     }
   }
 
