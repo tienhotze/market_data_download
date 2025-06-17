@@ -264,7 +264,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
           }
         } catch (error) {
           console.error(`Failed to process ${event.name}:`, error)
-          return null
+          return null // Skip this event if no data available
         }
       })
 
@@ -272,7 +272,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
       const validEventData = eventDataResults.filter((data): data is EventAssetData => data !== null)
 
       if (validEventData.length === 0) {
-        throw new Error("No valid event data found")
+        throw new Error("No valid event data found - no mock data will be generated")
       }
 
       // Calculate average and median for each day

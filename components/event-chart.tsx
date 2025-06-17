@@ -144,7 +144,7 @@ export function EventChart({ event }: EventChartProps) {
           return { assetName, data: assetData }
         } catch (error) {
           console.error(`Failed to get data for ${assetName}:`, error)
-          return { assetName, data: null }
+          return { assetName, data: null } // Return null instead of mock data
         }
       })
 
@@ -155,6 +155,7 @@ export function EventChart({ event }: EventChartProps) {
         if (data) {
           finalAssetData[assetName] = data
         }
+        // Skip assets with no data - no mock data generation
       })
 
       setAssetData(finalAssetData)

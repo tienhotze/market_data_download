@@ -72,12 +72,11 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // If we don't have enough data, fetch from Yahoo Finance using 1mo period for latest data
+        // If we don't have enough data, fetch from Yahoo Finance
         if (priceData.length === 0 || !hasCompleteDateRange(priceData, startDate, endDate)) {
           console.log(`Fetching data from Yahoo Finance for ${assetName}...`)
           try {
-            // Use 1mo period to get latest month data for missing data
-            const yahooData = await fetchYahooData(assetTicker, startDate, endDate, "1mo")
+            const yahooData = await fetchYahooData(assetTicker, startDate, endDate)
             if (yahooData.length > 0) {
               // Check if we have new data compared to existing repo data
               const existingDates = new Set(priceData.map((d) => d.date))
@@ -124,7 +123,7 @@ export async function POST(request: NextRequest) {
           widerEndDate.setDate(widerEndDate.getDate() + 90)
 
           try {
-            const widerData = await fetchYahooData(assetTicker, widerStartDate, widerEndDate, "1mo")
+            const widerData = await fetchYahooData(assetTicker, widerStartDate, widerEndDate)
             if (widerData.length > 0) {
               priceData = widerData
               hasNewData = true
@@ -142,10 +141,10 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // If we still have no data, generate mock data as last resort
+        // If we still have no data, skip this asset (no mock data)
         if (priceData.length === 0) {
-          console.log(`Generating mock data for ${assetName} as last resort`)
-          priceData = generateMockData(startDate, endDate, assetName)
+          console.log(`No data available for ${assetName} - skipping`)
+          continue
         }
 
         // Filter data to exact date range and reindex
@@ -155,19 +154,8 @@ export async function POST(request: NextRequest) {
         console.log(`Processed ${filteredData.dates.length} data points for ${assetName}`)
       } catch (assetError) {
         console.error(`Error processing ${assetName}:`, assetError)
-
-        // Generate mock data as fallback to prevent complete failure
-        try {
-          console.log(`Generating fallback mock data for ${assetName}`)
-          const mockData = generateMockData(startDate, endDate, assetName)
-          const filteredData = filterAndReindexData(mockData, startDate, endDate, eventDate, assetName)
-          allAssetData[assetName] = filteredData
-          console.log(`Using mock data for ${assetName}: ${filteredData.dates.length} points`)
-        } catch (mockError) {
-          console.error(`Failed to generate mock data for ${assetName}:`, mockError)
-          // Skip this asset entirely only if mock data also fails
-          continue
-        }
+        // Skip this asset entirely if there's an error
+        continue
       }
     }
 
@@ -207,44 +195,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function generateMockData(startDate: Date, endDate: Date, assetName: string): any[] {
-  const mockData: any[] = []
-  const currentDate = new Date(startDate)
-
-  // Base prices for different assets
-  const basePrices: Record<string, number> = {
-    "S&P 500": 4000,
-    "WTI Crude Oil": 70,
-    Gold: 1800,
-    "Dollar Index": 100,
-    "10Y Treasury Yield": 4.5,
-    VIX: 20,
-  }
-
-  let basePrice = basePrices[assetName] || 100
-
-  while (currentDate <= endDate) {
-    // Add some random variation (±2%)
-    const variation = (Math.random() - 0.5) * 0.04
-    const price = basePrice * (1 + variation)
-
-    mockData.push({
-      date: currentDate.toISOString().split("T")[0],
-      open: price * 0.999,
-      high: price * 1.002,
-      low: price * 0.998,
-      close: price,
-      volume: Math.floor(Math.random() * 1000000) + 500000,
-    })
-
-    basePrice = price // Use current price as base for next day
-    currentDate.setDate(currentDate.getDate() + 1)
-  }
-
-  console.log(`Generated ${mockData.length} mock data points for ${assetName}`)
-  return mockData
-}
-
 function isWeekday(date: Date): boolean {
   const day = date.getDay()
   return day >= 1 && day <= 5 // Monday = 1, Friday = 5
@@ -266,13 +216,13 @@ async function checkGitHubRepo(ticker: string, startDate: Date, endDate: Date) {
     const repoOwner = "tienhotze"
     const repoName = "market_data_download"
 
-    // URL encode the ticker to handle special characters like ^, =, etc.
-    const encodedTicker = encodeURIComponent(ticker)
-    const dataPath = `data/${encodedTicker}`
+    // Use new naming convention: /data/{ticker}/{ticker}_OHLCV_D.csv
+    const fileName = `${ticker}_OHLCV_D.csv`
+    const filePath = `data/${ticker}/${fileName}`
 
-    console.log(`Checking GitHub repo: ${repoOwner}/${repoName}/${dataPath}`)
+    console.log(`Checking GitHub repo: ${repoOwner}/${repoName}/${filePath}`)
 
-    const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${dataPath}`
+    const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${filePath}`
     console.log(`GitHub API URL: ${apiUrl}`)
 
     const response = await fetch(apiUrl, {
@@ -287,7 +237,7 @@ async function checkGitHubRepo(ticker: string, startDate: Date, endDate: Date) {
 
     if (!response.ok) {
       if (response.status === 404) {
-        console.log(`No data directory found for ticker ${ticker}`)
+        console.log(`No data file found for ticker ${ticker}`)
         return []
       }
       if (response.status === 403) {
@@ -302,69 +252,25 @@ async function checkGitHubRepo(ticker: string, startDate: Date, endDate: Date) {
       return []
     }
 
-    const responseText = await response.text()
-    console.log(`GitHub API response length: ${responseText.length}`)
+    const fileData = await response.json()
 
-    // Check if response looks like JSON before parsing
-    if (!responseText.trim().startsWith("[") && !responseText.trim().startsWith("{")) {
-      console.log(`GitHub API returned non-JSON response: ${responseText.substring(0, 100)}...`)
+    // Download the CSV file content
+    const csvResponse = await fetch(fileData.download_url, {
+      headers: {
+        "User-Agent": "Market-Data-Downloader",
+      },
+    })
+
+    if (!csvResponse.ok) {
+      console.log(`Failed to download CSV file: ${csvResponse.status}`)
       return []
     }
 
-    let files
-    try {
-      files = JSON.parse(responseText)
-    } catch (parseError) {
-      console.error("Failed to parse GitHub API response:", parseError)
-      console.log(`Response preview: ${responseText.substring(0, 200)}...`)
-      return []
-    }
+    const csvText = await csvResponse.text()
+    const parsedData = parseCSVData(csvText)
 
-    if (!Array.isArray(files)) {
-      console.log("GitHub API response is not an array:", typeof files)
-      // If it's an object with a message, it might be an error
-      if (files && typeof files === "object" && files.message) {
-        console.log(`GitHub API error message: ${files.message}`)
-      }
-      return []
-    }
-
-    console.log(`Found ${files.length} files in repo`)
-
-    // Get CSV files and combine data
-    let allData: any[] = []
-
-    for (const file of files) {
-      if (file.name && file.name.endsWith(".csv") && file.download_url) {
-        try {
-          console.log(`Fetching file: ${file.name}`)
-          const fileResponse = await fetch(file.download_url, {
-            headers: {
-              "User-Agent": "Market-Data-Downloader",
-            },
-          })
-
-          if (fileResponse.ok) {
-            const csvText = await fileResponse.text()
-            const fileData = parseCSVData(csvText)
-            allData = [...allData, ...fileData]
-            console.log(`Added ${fileData.length} rows from ${file.name}`)
-          } else {
-            console.log(`Failed to fetch file ${file.name}: ${fileResponse.status}`)
-          }
-        } catch (error) {
-          console.error(`Error fetching file ${file.name}:`, error)
-        }
-      }
-    }
-
-    // Remove duplicates and sort by date
-    const uniqueData = Array.from(new Map(allData.map((item) => [item.date, item])).values()).sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-    )
-
-    console.log(`Total unique data points: ${uniqueData.length}`)
-    return uniqueData
+    console.log(`Successfully parsed ${parsedData.length} rows from ${fileName}`)
+    return parsedData
   } catch (error) {
     console.error("GitHub repo check error:", error)
     return []
@@ -391,7 +297,6 @@ async function fetchYahooData(ticker: string, startDate: Date, endDate: Date, pe
   const startTimestamp = Math.floor(startDate.getTime() / 1000)
   const endTimestamp = Math.floor(endDate.getTime() / 1000)
 
-  // Use the period parameter for latest month data when missing data
   const url = `https://query1.finance.yahoo.com/v7/finance/download/${ticker}?period1=${startTimestamp}&period2=${endTimestamp}&interval=1d&events=history&includeAdjustedClose=true`
 
   console.log(`Yahoo Finance URL: ${url} (using ${period} period for latest data)`)
@@ -526,6 +431,37 @@ async function saveDataToGitHub(ticker: string, data: any[]) {
   }
 }
 
+function filterAndReindexData(data: any[], startDate: Date, endDate: Date, eventDate: string, assetName: string) {
+  const filteredData = data.filter((item) => {
+    const itemDate = new Date(item.date)
+    return itemDate >= startDate && itemDate <= endDate
+  })
+
+  const eventDateObj = new Date(eventDate)
+
+  const dates = filteredData.map((item) => {
+    const itemDate = new Date(item.date)
+    const diffInDays = Math.floor((itemDate.getTime() - eventDateObj.getTime()) / (1000 * 3600 * 24))
+    return diffInDays
+  })
+
+  const open = filteredData.map((item) => item.open)
+  const high = filteredData.map((item) => item.high)
+  const low = filteredData.map((item) => item.low)
+  const close = filteredData.map((item) => item.close)
+  const volume = filteredData.map((item) => item.volume)
+
+  return {
+    assetName,
+    dates,
+    open,
+    high,
+    low,
+    close,
+    volume,
+  }
+}
+
 async function saveAssetDataToGitHub(assetName: string, ticker: string, data: any[]) {
   try {
     console.log(`Saving ${data.length} data points to GitHub for ${assetName} (${ticker})`)
@@ -553,176 +489,12 @@ async function saveAssetDataToGitHub(assetName: string, ticker: string, data: an
     })
 
     if (response.ok) {
-      console.log(`Successfully saved ${assetName} data to GitHub`)
-      return true
+      console.log(`Successfully saved data to GitHub for ${assetName} (${ticker})`)
     } else {
       const errorText = await response.text()
-      console.log(`Failed to save ${assetName} data to GitHub:`, response.status, errorText)
-      return false
+      console.log(`Failed to save data to GitHub for ${assetName} (${ticker}):`, response.status, errorText)
     }
   } catch (error) {
-    console.error(`Error saving ${assetName} to GitHub:`, error)
-    return false
+    console.error(`Error saving to GitHub for ${assetName} (${ticker}):`, error)
   }
-}
-
-function forwardFillMissingPrices(data: any[]): any[] {
-  if (data.length === 0) return data
-
-  const filledData = [...data]
-
-  // Forward fill missing prices
-  for (let i = 1; i < filledData.length; i++) {
-    const current = filledData[i]
-    const previous = filledData[i - 1]
-
-    // If current prices are missing or invalid, use previous day's prices
-    if (isNaN(current.open) || isNaN(current.high) || isNaN(current.low) || isNaN(current.close)) {
-      console.log(`Forward filling missing prices for ${current.date} using ${previous.date}`)
-      current.open = previous.open
-      current.high = previous.high
-      current.low = previous.low
-      current.close = previous.close
-      current.volume = previous.volume || 0
-    }
-  }
-
-  return filledData
-}
-
-function filterAndReindexData(data: any[], startDate: Date, endDate: Date, eventDate: string, assetName: string) {
-  console.log(
-    `Filtering data for ${assetName} from ${startDate.toISOString().split("T")[0]} to ${
-      endDate.toISOString().split("T")[0]
-    }`,
-  )
-
-  // First, filter to a more flexible date range
-  const flexibleStartDate = new Date(startDate)
-  flexibleStartDate.setDate(flexibleStartDate.getDate() - 15) // Extra buffer
-
-  const flexibleEndDate = new Date(endDate)
-  flexibleEndDate.setDate(flexibleEndDate.getDate() + 15) // Extra buffer
-
-  const dateFiltered = data.filter((row) => {
-    const rowDate = new Date(row.date)
-    return rowDate >= flexibleStartDate && rowDate <= flexibleEndDate
-  })
-
-  console.log(`Date filtered to ${dateFiltered.length} data points for ${assetName}`)
-
-  if (dateFiltered.length === 0) {
-    console.log(`No data in flexible range, using all available data for ${assetName}`)
-    // Use all available data if nothing in range
-    if (data.length === 0) {
-      throw new Error(`No data available for ${assetName}`)
-    }
-    // Use the available data we have
-    const sortedData = data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    return processAvailableData(sortedData, eventDate, assetName)
-  }
-
-  // Forward fill any missing prices
-  const filledData = forwardFillMissingPrices(dateFiltered)
-
-  // Check if event date is a weekend
-  const eventDateObj = new Date(eventDate)
-  const eventIsWeekend = isWeekend(eventDateObj)
-
-  // Filter to weekdays only, but include event date if it's a weekend
-  const weekdayFiltered = filledData.filter((row) => {
-    const rowDate = new Date(row.date)
-    const isEventDate = row.date === eventDate
-
-    // Include if it's a weekday OR if it's the event date (even if weekend)
-    return isWeekday(rowDate) || (isEventDate && eventIsWeekend)
-  })
-
-  console.log(`Weekday filtered to ${weekdayFiltered.length} data points for ${assetName}`)
-  if (eventIsWeekend) {
-    console.log(`Event date ${eventDate} is a weekend - included in dataset`)
-  }
-
-  if (weekdayFiltered.length === 0) {
-    console.log(`No weekday data, using all filtered data for ${assetName}`)
-    return processAvailableData(filledData, eventDate, assetName)
-  }
-
-  return processFilteredData(weekdayFiltered, eventDate, assetName)
-}
-
-function processAvailableData(data: any[], eventDate: string, assetName: string) {
-  // Find event date price for reindexing
-  let eventRow = data.find((row) => row.date === eventDate)
-
-  if (!eventRow) {
-    // Find closest date to event date
-    const eventDateTime = new Date(eventDate).getTime()
-    eventRow = data.reduce((prev, curr) => {
-      const prevDiff = Math.abs(new Date(prev.date).getTime() - eventDateTime)
-      const currDiff = Math.abs(new Date(curr.date).getTime() - eventDateTime)
-      return currDiff < prevDiff ? curr : prev
-    })
-    console.log(`Event date ${eventDate} not found for ${assetName}, using closest date ${eventRow.date}`)
-  }
-
-  const eventPrice = eventRow.close
-
-  // Create reindexed data
-  const dates = data.map((row) => row.date)
-  const prices = data.map((row) => row.close)
-
-  let reindexed: number[]
-
-  if (assetName === "10Y Treasury Yield" || assetName === "VIX") {
-    // Special formula for bond yields and VIX: current - start + 100
-    reindexed = prices.map((price) => price - eventPrice + 100)
-    console.log(
-      `Reindexed ${assetName} data: ${reindexed.length} points, event ${assetName === "VIX" ? "VIX" : "yield"}: ${eventPrice}${assetName === "10Y Treasury Yield" ? "%" : ""}`,
-    )
-  } else {
-    // Standard formula for other assets: (current / start) * 100
-    reindexed = prices.map((price) => (price / eventPrice) * 100)
-    console.log(`Reindexed ${assetName} data: ${reindexed.length} points, event price: ${eventPrice}`)
-  }
-
-  return { dates, prices, reindexed, assetName, eventPrice }
-}
-
-function processFilteredData(weekdayFiltered: any[], eventDate: string, assetName: string) {
-  // Find event date price for reindexing
-  let eventRow = weekdayFiltered.find((row) => row.date === eventDate)
-
-  if (!eventRow) {
-    // Find closest weekday to event date
-    const eventDateTime = new Date(eventDate).getTime()
-    eventRow = weekdayFiltered.reduce((prev, curr) => {
-      const prevDiff = Math.abs(new Date(prev.date).getTime() - eventDateTime)
-      const currDiff = Math.abs(new Date(curr.date).getTime() - eventDateTime)
-      return currDiff < prevDiff ? curr : prev
-    })
-    console.log(`Event date ${eventDate} not found for ${assetName}, using closest weekday ${eventRow.date}`)
-  }
-
-  const eventPrice = eventRow.close
-
-  // Create reindexed data with different formulas
-  const dates = weekdayFiltered.map((row) => row.date)
-  const prices = weekdayFiltered.map((row) => row.close)
-
-  let reindexed: number[]
-
-  if (assetName === "10Y Treasury Yield" || assetName === "VIX") {
-    // Special formula for bond yields and VIX: current - start + 100
-    reindexed = prices.map((price) => price - eventPrice + 100)
-    console.log(
-      `Reindexed ${assetName} data: ${reindexed.length} points, event ${assetName === "VIX" ? "VIX" : "yield"}: ${eventPrice}${assetName === "10Y Treasury Yield" ? "%" : ""}`,
-    )
-  } else {
-    // Standard formula for other assets: (current / start) * 100
-    reindexed = prices.map((price) => (price / eventPrice) * 100)
-    console.log(`Reindexed ${assetName} data: ${reindexed.length} points, event price: ${eventPrice}`)
-  }
-
-  return { dates, prices, reindexed, assetName, eventPrice }
 }

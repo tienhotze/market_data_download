@@ -87,9 +87,7 @@ export function PricesTable({ ticker, dateRange, data, loading, period = "1mo" }
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>
-          Price Data - {ticker.symbol} ({period || "Unknown Period"})
-        </CardTitle>
+        <CardTitle>OHLCV Daily - {ticker.symbol}</CardTitle>
         <Button onClick={handleSaveCSV} disabled={data.length === 0 || saving} className="flex items-center gap-2">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           Save CSV

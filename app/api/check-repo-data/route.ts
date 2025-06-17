@@ -131,13 +131,13 @@ async function checkGitHubRepo(ticker: string, startDate?: string, endDate?: str
     const repoOwner = "tienhotze"
     const repoName = "market_data_download"
 
-    // URL encode the ticker to handle special characters like ^, =, etc.
-    const encodedTicker = encodeURIComponent(ticker)
-    const dataPath = `data/${encodedTicker}`
+    // Use new naming convention: /data/{ticker}/{ticker}_OHLCV_D.csv
+    const fileName = `${ticker}_OHLCV_D.csv`
+    const filePath = `data/${ticker}/${fileName}`
 
-    console.log(`Checking GitHub repo: ${repoOwner}/${repoName}/${dataPath}`)
+    console.log(`Checking GitHub repo: ${repoOwner}/${repoName}/${filePath}`)
 
-    const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${dataPath}`
+    const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${filePath}`
     console.log(`GitHub API URL: ${apiUrl}`)
 
     const response = await fetch(apiUrl, {
@@ -152,7 +152,7 @@ async function checkGitHubRepo(ticker: string, startDate?: string, endDate?: str
 
     if (!response.ok) {
       if (response.status === 404) {
-        throw new Error(`No data directory found for ticker ${ticker}`)
+        throw new Error(`No data file found for ticker ${ticker}`)
       }
       if (response.status === 403) {
         throw new Error(`GitHub API rate limited or forbidden for ticker ${ticker}`)
@@ -163,66 +163,24 @@ async function checkGitHubRepo(ticker: string, startDate?: string, endDate?: str
       throw new Error(`GitHub API error: ${response.status} ${response.statusText}`)
     }
 
-    const responseText = await response.text()
-    console.log(`GitHub API response length: ${responseText.length}`)
+    const fileData = await response.json()
 
-    // Check if response looks like JSON before parsing
-    if (!responseText.trim().startsWith("[") && !responseText.trim().startsWith("{")) {
-      throw new Error(`GitHub API returned non-JSON response: ${responseText.substring(0, 100)}...`)
+    // Download the CSV file content
+    const csvResponse = await fetch(fileData.download_url, {
+      headers: {
+        "User-Agent": "Market-Data-Downloader",
+      },
+    })
+
+    if (!csvResponse.ok) {
+      throw new Error(`Failed to download CSV file: ${csvResponse.status}`)
     }
 
-    let files
-    try {
-      files = JSON.parse(responseText)
-    } catch (parseError) {
-      throw new Error(`Failed to parse GitHub API response: ${parseError}`)
-    }
+    const csvText = await csvResponse.text()
+    const parsedData = parseCSVData(csvText)
 
-    if (!Array.isArray(files)) {
-      console.log("GitHub API response is not an array:", typeof files)
-      // If it's an object with a message, it might be an error
-      if (files && typeof files === "object" && files.message) {
-        throw new Error(`GitHub API error message: ${files.message}`)
-      }
-      throw new Error("GitHub API response is not an array")
-    }
-
-    console.log(`Found ${files.length} files in repo`)
-
-    // Get CSV files and combine data
-    let allData: any[] = []
-
-    for (const file of files) {
-      if (file.name && file.name.endsWith(".csv") && file.download_url) {
-        try {
-          console.log(`Fetching file: ${file.name}`)
-          const fileResponse = await fetch(file.download_url, {
-            headers: {
-              "User-Agent": "Market-Data-Downloader",
-            },
-          })
-
-          if (fileResponse.ok) {
-            const csvText = await fileResponse.text()
-            const fileData = parseCSVData(csvText)
-            allData = [...allData, ...fileData]
-            console.log(`Added ${fileData.length} rows from ${file.name}`)
-          } else {
-            console.log(`Failed to fetch file ${file.name}: ${fileResponse.status}`)
-          }
-        } catch (error) {
-          console.error(`Error fetching file ${file.name}:`, error)
-        }
-      }
-    }
-
-    // Remove duplicates and sort by date
-    const uniqueData = Array.from(new Map(allData.map((item) => [item.date, item])).values()).sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-    )
-
-    console.log(`Total unique data points: ${uniqueData.length}`)
-    return uniqueData
+    console.log(`Successfully parsed ${parsedData.length} rows from ${fileName}`)
+    return parsedData
   } catch (error) {
     console.error("GitHub repo check error:", error)
     throw error
