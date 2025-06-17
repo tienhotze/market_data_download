@@ -17,12 +17,11 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowLeft, Plus, Calendar, TrendingUp } from "lucide-react"
+import { ArrowLeft, Plus, Calendar, TrendingUp, CheckCircle, Settings } from "lucide-react"
 import { EventChart } from "@/components/event-chart"
 import { MultiEventChart } from "@/components/multi-event-chart"
 import type { EventData } from "@/types"
-import { eventDataDB } from "@/lib/indexeddb"
-import { AssetLoader } from "@/components/asset-loader"
+import { eventDataDB, ASSET_NAMES } from "@/lib/indexeddb"
 import { Toaster } from "@/components/ui/toaster"
 import { useToast } from "@/hooks/use-toast"
 
@@ -190,6 +189,7 @@ export default function EventAnalysisPage() {
   const [events, setEvents] = useState<EventData[]>(DEFAULT_EVENTS)
   const [selectedEvent, setSelectedEvent] = useState<EventData | null>(null)
   const [showAddDialog, setShowAddDialog] = useState(false)
+  const [cacheStatus, setCacheStatus] = useState<string>("Loading cache status...")
   const [newEvent, setNewEvent] = useState({
     name: "",
     date: "",
@@ -197,33 +197,158 @@ export default function EventAnalysisPage() {
     description: "",
   })
 
-  // Initialize database without preloading
+  // Initialize database and check cache status
   useEffect(() => {
-    const initializeData = async () => {
+    const initializeAndCheckCache = async () => {
       try {
-        // Clear old data (older than 24 hours)
+        // Initialize database
         await eventDataDB.clearOldData(24)
 
-        // Get storage stats
+        // Get cache status
         const stats = await eventDataDB.getStorageStats()
+        const totalDataPoints = await getTotalDataPoints()
+
+        setCacheStatus(
+          `Cache Status: ${stats.assetDataCount} assets loaded with ${totalDataPoints.toLocaleString()} total closing prices`,
+        )
+
         console.log(`IndexedDB stats: ${stats.eventDataCount} event records, ${stats.bulkDataCount} bulk records`)
 
-        toast({
-          title: "Database Initialized",
-          description: `Ready to load asset data. ${stats.assetDataCount} assets already cached.`,
-        })
+        // Auto-load stale assets if needed
+        await autoLoadStaleAssets()
       } catch (error) {
-        console.error("Failed to initialize event data:", error)
+        console.error("Failed to initialize:", error)
+        setCacheStatus("Cache Status: Error loading cache information")
         toast({
           title: "Initialization Error",
-          description: "Failed to initialize database. Some features may not work.",
+          description: "Failed to initialize database. Some features may not work properly.",
           variant: "destructive",
         })
       }
     }
 
-    initializeData()
+    initializeAndCheckCache()
   }, [toast])
+
+  const getTotalDataPoints = async (): Promise<number> => {
+    let total = 0
+    for (const assetName of ASSET_NAMES) {
+      const assetData = await eventDataDB.getAssetClosingPrices(assetName)
+      if (assetData && assetData.closingPrices.length > 0) {
+        total += assetData.closingPrices.length
+      }
+    }
+    return total
+  }
+
+  const autoLoadStaleAssets = async () => {
+    // Check if we have recent asset data (less than 24 hours old)
+    const assetDataPromises = ASSET_NAMES.map(async (assetName) => {
+      const isFresh = await eventDataDB.isAssetDataFresh(assetName, 24)
+      return { assetName, isFresh }
+    })
+
+    const assetFreshness = await Promise.all(assetDataPromises)
+    const staleAssets = assetFreshness.filter((asset) => !asset.isFresh)
+
+    if (staleAssets.length > 0) {
+      toast({
+        title: "Loading Asset Data",
+        description: `Loading ${staleAssets.length} assets with stale data in the background...`,
+      })
+
+      // Load stale assets in background
+      const loadPromises = staleAssets.map(async ({ assetName }) => {
+        try {
+          await refreshSingleAsset(assetName)
+        } catch (error) {
+          console.error(`Failed to load ${assetName}:`, error)
+        }
+      })
+
+      await Promise.allSettled(loadPromises)
+
+      // Update cache status after loading
+      const stats = await eventDataDB.getStorageStats()
+      const totalDataPoints = await getTotalDataPoints()
+      setCacheStatus(
+        `Cache Status: ${stats.assetDataCount} assets loaded with ${totalDataPoints.toLocaleString()} total closing prices`,
+      )
+
+      toast({
+        title: "Asset Data Updated",
+        description: `Background loading completed. ${stats.assetDataCount} assets now cached.`,
+      })
+    }
+  }
+
+  const refreshSingleAsset = async (assetName: string) => {
+    const ASSET_TICKERS = {
+      "S&P 500": "^GSPC",
+      "WTI Crude Oil": "CL=F",
+      Gold: "GC=F",
+      "Dollar Index": "DX-Y.NYB",
+      "10Y Treasury Yield": "^TNX",
+      VIX: "^VIX",
+    }
+
+    const ticker = ASSET_TICKERS[assetName as keyof typeof ASSET_TICKERS]
+    if (!ticker) return
+
+    // Try GitHub first
+    let githubSuccess = false
+    try {
+      const githubResponse = await fetch("/api/check-repo-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticker }),
+      })
+
+      if (githubResponse.ok) {
+        const githubData = await githubResponse.json()
+        if (githubData.data && githubData.data.length > 0) {
+          const dateRange = {
+            start: githubData.data[0].date,
+            end: githubData.data[githubData.data.length - 1].date,
+          }
+
+          await eventDataDB.storeAssetClosingPrices(assetName, ticker, githubData.data, dateRange)
+          githubSuccess = true
+        }
+      }
+    } catch (githubError) {
+      console.error(`GitHub failed for ${assetName}:`, githubError)
+    }
+
+    // Try Yahoo Finance if GitHub failed
+    if (!githubSuccess) {
+      try {
+        const yahooResponse = await fetch("/api/download", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tickers: [ticker],
+            period: "max",
+            extraData: false,
+          }),
+        })
+
+        if (yahooResponse.ok) {
+          const yahooData = await yahooResponse.json()
+          if (yahooData.data && yahooData.data.length > 0) {
+            const dateRange = {
+              start: yahooData.data[0].Date,
+              end: yahooData.data[yahooData.data.length - 1].Date,
+            }
+
+            await eventDataDB.storeAssetClosingPrices(assetName, ticker, yahooData.data, dateRange)
+          }
+        }
+      } catch (yahooError) {
+        console.error(`Yahoo Finance failed for ${assetName}:`, yahooError)
+      }
+    }
+  }
 
   const handleAddEvent = () => {
     if (newEvent.name && newEvent.date && newEvent.category) {
@@ -276,9 +401,25 @@ export default function EventAnalysisPage() {
           </div>
         </header>
 
-        {/* Asset Loader Component */}
+        {/* Cache Status Summary */}
         <div className="mb-8">
-          <AssetLoader />
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                  <div>
+                    <div className="text-sm font-medium text-green-800">{cacheStatus}</div>
+                    <div className="text-xs text-green-600">Last updated: {new Date().toLocaleString()}</div>
+                  </div>
+                </div>
+                <Button onClick={() => router.push("/asset-data")} variant="outline" size="sm">
+                  <Settings className="h-4 w-4 mr-2" />
+                  Manage Asset Data
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         <div className="max-w-6xl mx-auto space-y-6">
@@ -294,7 +435,7 @@ export default function EventAnalysisPage() {
                   <CardTitle>Select Event to Analyze</CardTitle>
                   <CardDescription>
                     Choose from {events.length} historical events including Middle East conflicts, economic crises, and
-                    policy changes. Load asset data manually using the Asset Loader above.
+                    policy changes. Asset data is automatically loaded in the background.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
