@@ -94,6 +94,93 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
     return labels
   }
 
+  // Calculate reindexed data for a specific event using full raw dataset
+  const calculateEventReindexedData = (
+    rawClosingPrices: { date: string; close: number }[],
+    eventDate: string,
+    assetName: string,
+  ): number[] | null => {
+    console.log(`🧮 Calculating reindexed data for event ${eventDate} using ${rawClosingPrices.length} raw data points`)
+
+    const eventDateObj = new Date(eventDate)
+    const eventDateStr = eventDateObj.toISOString().split("T")[0]
+
+    // Find the event date price (or closest available before/on event date)
+    let eventPrice = null
+    let eventPriceDate = null
+
+    // Sort raw data by date
+    const sortedData = [...rawClosingPrices].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
+    // Find event price - use the last available price on or before the event date
+    for (let i = sortedData.length - 1; i >= 0; i--) {
+      const priceDate = new Date(sortedData[i].date)
+      if (priceDate <= eventDateObj) {
+        eventPrice = sortedData[i].close
+        eventPriceDate = sortedData[i].date
+        break
+      }
+    }
+
+    if (eventPrice === null || eventPrice === 0) {
+      console.log(`❌ No valid event price found for ${eventDate} in ${assetName}`)
+      return null
+    }
+
+    console.log(`🎯 Event price for ${eventDate}: ${eventPrice} (from ${eventPriceDate})`)
+
+    // Generate reindexed data for -30 to +90 days (121 days total)
+    const reindexedData: number[] = []
+    const isAdditiveAsset = assetName === "10Y Treasury Yield" || assetName === "VIX"
+
+    for (let i = -30; i <= 90; i++) {
+      const targetDate = new Date(eventDateObj)
+      targetDate.setDate(eventDateObj.getDate() + i)
+      const targetDateStr = targetDate.toISOString().split("T")[0]
+
+      // Find the price for this target date (or use forward fill)
+      let targetPrice = null
+
+      // First, try to find exact date match
+      const exactMatch = sortedData.find((d) => d.date === targetDateStr)
+      if (exactMatch) {
+        targetPrice = exactMatch.close
+      } else {
+        // Use forward fill - find the last known price before or on this date
+        for (let j = sortedData.length - 1; j >= 0; j--) {
+          const priceDate = new Date(sortedData[j].date)
+          if (priceDate <= targetDate) {
+            targetPrice = sortedData[j].close
+            break
+          }
+        }
+      }
+
+      // Calculate reindexed value
+      let reindexedValue: number
+      if (targetPrice !== null) {
+        if (isAdditiveAsset) {
+          // Additive reindexing for 10Y yield and VIX
+          reindexedValue = targetPrice - eventPrice + 100
+        } else {
+          // Multiplicative reindexing for other assets
+          reindexedValue = (targetPrice / eventPrice) * 100
+        }
+      } else {
+        // No data available, use baseline
+        reindexedValue = 100
+      }
+
+      reindexedData.push(reindexedValue)
+    }
+
+    console.log(
+      `✅ Generated ${reindexedData.length} reindexed data points for ${eventDate} (range: ${Math.min(...reindexedData).toFixed(2)} to ${Math.max(...reindexedData).toFixed(2)})`,
+    )
+
+    return reindexedData
+  }
+
   const shouldDownloadData = (isManualUpdate = false): boolean => {
     const now = Date.now()
     const oneHour = 60 * 60 * 1000
@@ -158,139 +245,38 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
     setGithubSaveStatus("")
 
     try {
+      console.log(`🔍 Starting multi-event analysis for ${selectedAsset}`)
+
+      // Step 1: Get the full raw closing price data for the selected asset
+      console.log(`📊 Fetching full raw closing price data for ${selectedAsset}`)
+      const assetData = await eventDataDB.getAssetClosingPrices(selectedAsset)
+
+      if (!assetData || !assetData.closingPrices || assetData.closingPrices.length === 0) {
+        throw new Error(
+          `No raw closing price data available for ${selectedAsset}. Please refresh the asset data first.`,
+        )
+      }
+
+      console.log(`✅ Found ${assetData.closingPrices.length} raw closing prices for ${selectedAsset}`)
+      console.log(`   Date range: ${assetData.dateRange.start} to ${assetData.dateRange.end}`)
+
+      // Step 2: Process each selected event using the full raw dataset
       const eventDataPromises = Array.from(selectedEvents).map(async (eventId) => {
         const event = events.find((e) => e.id === eventId)
         if (!event) return null
 
+        console.log(`🔍 Processing event: ${event.name} (${event.date})`)
+
         try {
-          // Always try to calculate from cached closing prices first
-          const calculatedData = await eventDataDB.calculateEventData(selectedAsset, event.date, 30, 90)
+          // Calculate reindexed data for this event using the full raw dataset
+          const reindexedData = calculateEventReindexedData(assetData.closingPrices, event.date, selectedAsset)
 
-          if (calculatedData && !isManualUpdate) {
-            console.log(`Using cached closing prices for ${event.name} - ${selectedAsset}`)
-
-            // Generate comprehensive data for this event (-30 to +90 days)
-            const eventDate = new Date(event.date)
-            const reindexedData: number[] = []
-
-            for (let i = -30; i <= 90; i++) {
-              const targetDate = new Date(eventDate)
-              targetDate.setDate(eventDate.getDate() + i)
-              const targetDateStr = targetDate.toISOString().split("T")[0]
-
-              // Find data for this date
-              const dataIndex = calculatedData.dates.findIndex((d: string) => d === targetDateStr)
-              if (dataIndex !== -1) {
-                reindexedData.push(calculatedData.reindexed[dataIndex])
-              } else {
-                // Use forward fill logic
-                let lastKnownValue = 100
-                for (let j = calculatedData.dates.length - 1; j >= 0; j--) {
-                  const checkDate = new Date(calculatedData.dates[j])
-                  if (checkDate <= targetDate) {
-                    lastKnownValue = calculatedData.reindexed[j]
-                    break
-                  }
-                }
-                reindexedData.push(lastKnownValue)
-              }
-            }
-
-            return {
-              eventId: event.id,
-              eventName: event.name,
-              eventDate: event.date,
-              reindexedData,
-            }
+          if (!reindexedData || reindexedData.length !== 121) {
+            console.log(`❌ Failed to generate valid reindexed data for ${event.name}`)
+            return null
           }
 
-          // Only fetch fresh data if manual update or no cached data
-          if (isManualUpdate || !calculatedData) {
-            console.log(`Fetching fresh data for ${event.name} - ${selectedAsset}`)
-            const response = await fetch("/api/event-data", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                eventDate: event.date,
-                assetsToFetch: [selectedAsset],
-              }),
-            })
-
-            if (!response.ok) {
-              throw new Error(`Failed to fetch data for ${event.name}`)
-            }
-
-            const data = await response.json()
-            const assetData = data.assets[selectedAsset]
-
-            if (!assetData) {
-              throw new Error(`No data available for ${selectedAsset} in ${event.name}`)
-            }
-
-            // Store in IndexedDB for future use
-            await eventDataDB.storeEventData(eventId, selectedAsset, event.date, assetData)
-
-            // Generate comprehensive data for this event (-30 to +90 days)
-            const eventDate = new Date(event.date)
-            const reindexedData: number[] = []
-
-            for (let i = -30; i <= 90; i++) {
-              const targetDate = new Date(eventDate)
-              targetDate.setDate(eventDate.getDate() + i)
-              const targetDateStr = targetDate.toISOString().split("T")[0]
-
-              // Find data for this date
-              const dataIndex = assetData.dates.findIndex((d: string) => d === targetDateStr)
-              if (dataIndex !== -1) {
-                reindexedData.push(assetData.reindexed[dataIndex])
-              } else {
-                // Use forward fill logic
-                let lastKnownValue = 100
-                for (let j = assetData.dates.length - 1; j >= 0; j--) {
-                  const checkDate = new Date(assetData.dates[j])
-                  if (checkDate <= targetDate) {
-                    lastKnownValue = assetData.reindexed[j]
-                    break
-                  }
-                }
-                reindexedData.push(lastKnownValue)
-              }
-            }
-
-            return {
-              eventId: event.id,
-              eventName: event.name,
-              eventDate: event.date,
-              reindexedData,
-            }
-          }
-
-          // Use calculated data from cache
-          const eventDate = new Date(event.date)
-          const reindexedData: number[] = []
-
-          for (let i = -30; i <= 90; i++) {
-            const targetDate = new Date(eventDate)
-            targetDate.setDate(eventDate.getDate() + i)
-            const targetDateStr = targetDate.toISOString().split("T")[0]
-
-            // Find data for this date
-            const dataIndex = calculatedData.dates.findIndex((d: string) => d === targetDateStr)
-            if (dataIndex !== -1) {
-              reindexedData.push(calculatedData.reindexed[dataIndex])
-            } else {
-              // Use forward fill logic
-              let lastKnownValue = 100
-              for (let j = calculatedData.dates.length - 1; j >= 0; j--) {
-                const checkDate = new Date(calculatedData.dates[j])
-                if (checkDate <= targetDate) {
-                  lastKnownValue = calculatedData.reindexed[j]
-                  break
-                }
-              }
-              reindexedData.push(lastKnownValue)
-            }
-          }
+          console.log(`✅ Successfully processed ${event.name}`)
 
           return {
             eventId: event.id,
@@ -299,25 +285,46 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
             reindexedData,
           }
         } catch (error) {
-          console.error(`Failed to process ${event.name}:`, error)
+          console.error(`❌ Failed to process ${event.name}:`, error)
           return null
         }
       })
 
       const eventDataResults = await Promise.all(eventDataPromises)
       const validEventData = eventDataResults.filter((data): data is EventAssetData => data !== null)
+      const skippedEvents = eventDataResults.length - validEventData.length
 
       if (validEventData.length === 0) {
-        throw new Error("No valid event data found")
+        const selectedEventNames = Array.from(selectedEvents)
+          .map((id) => events.find((e) => e.id === id)?.name)
+          .filter(Boolean)
+          .join(", ")
+
+        throw new Error(
+          `No valid event data could be calculated for ${selectedAsset}. The selected events (${selectedEventNames}) may be outside the available historical data range (${assetData.dateRange.start} to ${assetData.dateRange.end}).`,
+        )
       }
 
-      // Calculate average and median for each day
+      console.log(`📊 Multi-event analysis summary:`)
+      console.log(`   Valid events: ${validEventData.length}`)
+      console.log(`   Skipped events: ${skippedEvents}`)
+      console.log(`   Asset: ${selectedAsset}`)
+
+      // Step 3: Calculate average and median for each day
       const dayLabels = generateDayLabels()
       const averageData: number[] = []
       const medianData: number[] = []
 
       for (let dayIndex = 0; dayIndex < 121; dayIndex++) {
-        const dayValues = validEventData.map((event) => event.reindexedData[dayIndex]).filter((val) => !isNaN(val))
+        const dayValues = validEventData
+          .map((event) => {
+            if (dayIndex >= event.reindexedData.length) {
+              console.warn(`⚠️ Missing data at index ${dayIndex} for event ${event.eventName}`)
+              return 100 // Default to baseline value
+            }
+            return event.reindexedData[dayIndex]
+          })
+          .filter((val) => !isNaN(val))
 
         if (dayValues.length > 0) {
           // Calculate average
@@ -346,7 +353,12 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
 
       setMultiEventData(resultData)
       setLastUpdate(new Date().toLocaleTimeString())
-      setGithubSaveStatus(`Data calculated from cached closing prices for ${validEventData.length} events`)
+
+      let statusMessage = `Data calculated for ${validEventData.length} events using cached raw data`
+      if (skippedEvents > 0) {
+        statusMessage += ` (${skippedEvents} events skipped - outside data range)`
+      }
+      setGithubSaveStatus(statusMessage)
 
       if (isInitialLoad.current) {
         isInitialLoad.current = false
