@@ -5,9 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Loader2, TrendingUp, TrendingDown, RefreshCw } from "lucide-react"
+import { Loader2, TrendingUp, TrendingDown, RefreshCw, Copy } from "lucide-react"
 import type { EventData } from "@/types"
 import { eventDataDB, ASSET_NAMES } from "@/lib/indexeddb"
+import { toast } from "@/components/ui/use-toast"
 
 // Import Plotly dynamically with proper configuration
 const Plot = dynamic(() => import("react-plotly.js"), {
@@ -53,6 +54,40 @@ const ASSET_COLORS = {
   "Dollar Index": "#059669",
   "10Y Treasury Yield": "#7c3aed",
   VIX: "#ec4899",
+}
+
+const copyTableToClipboard = async (tableId: string, tableName: string) => {
+  try {
+    const table = document.getElementById(tableId)
+    if (!table) return
+
+    let csvContent = ""
+    const rows = table.querySelectorAll("tr")
+
+    rows.forEach((row) => {
+      const cells = row.querySelectorAll("th, td")
+      const rowData = Array.from(cells).map((cell) => {
+        // Clean up the cell text
+        const text = cell.textContent?.trim() || ""
+        // Handle cells with line breaks or multiple elements
+        return text.replace(/\s+/g, " ").replace(/,/g, ";")
+      })
+      csvContent += rowData.join(",") + "\n"
+    })
+
+    await navigator.clipboard.writeText(csvContent)
+    toast({
+      title: "Table Copied",
+      description: `${tableName} has been copied to clipboard as CSV format.`,
+    })
+  } catch (error) {
+    console.error("Failed to copy table:", error)
+    toast({
+      title: "Copy Failed",
+      description: "Failed to copy table to clipboard.",
+      variant: "destructive",
+    })
+  }
 }
 
 export function EventChart({ event }: EventChartProps) {
@@ -496,20 +531,30 @@ export function EventChart({ event }: EventChartProps) {
       {priceChanges.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Post-Event Price Changes Summary</CardTitle>
+            <CardTitle className="flex items-center justify-between">
+              <span>Post-Event Price Changes Summary</span>
+              <Button
+                onClick={() => copyTableToClipboard("price-changes-table", "Price Changes Summary")}
+                variant="outline"
+                size="sm"
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                Copy Table
+              </Button>
+            </CardTitle>
             <CardDescription>
               Percentage changes relative to event date baseline (100). Raw values shown in parentheses.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-auto">
-              <Table>
+              <Table id="price-changes-table">
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="sticky left-0 bg-white z-10 border-r">Period</TableHead>
-                    <TableHead className="sticky left-16 bg-white z-10 border-r">Date</TableHead>
+                  <TableRow className="h-8">
+                    <TableHead className="sticky left-0 bg-white z-10 border-r py-1 px-2 text-sm">Period</TableHead>
+                    <TableHead className="sticky left-16 bg-white z-10 border-r py-1 px-2 text-sm">Date</TableHead>
                     {Object.keys(assetData).map((assetName) => (
-                      <TableHead key={assetName} className="text-center min-w-32">
+                      <TableHead key={assetName} className="text-center min-w-32 py-1 px-2 text-sm">
                         {assetName}
                         <br />
                         <span className="text-xs text-gray-500">% Change (Raw)</span>
@@ -519,18 +564,18 @@ export function EventChart({ event }: EventChartProps) {
                 </TableHeader>
                 <TableBody>
                   {priceChanges.map((change) => (
-                    <TableRow key={change.days}>
-                      <TableCell className="sticky left-0 bg-white z-10 border-r font-medium">
+                    <TableRow key={change.days} className="h-8">
+                      <TableCell className="sticky left-0 bg-white z-10 border-r font-medium py-1 px-2 text-sm">
                         +{change.days} days
                       </TableCell>
-                      <TableCell className="sticky left-16 bg-white z-10 border-r text-sm">
+                      <TableCell className="sticky left-16 bg-white z-10 border-r py-1 px-2 text-sm">
                         {change.date || "N/A"}
                       </TableCell>
                       {Object.entries(assetData).map(([assetName, _]) => {
                         const assetChange = change.changes[assetName]
                         if (!assetChange) {
                           return (
-                            <TableCell key={assetName} className="text-center text-gray-400">
+                            <TableCell key={assetName} className="text-center text-gray-400 py-1 px-2 text-sm">
                               N/A
                             </TableCell>
                           )
@@ -540,10 +585,10 @@ export function EventChart({ event }: EventChartProps) {
                         const isNegative = assetChange.percentage < 0
 
                         return (
-                          <TableCell key={assetName} className="text-center">
+                          <TableCell key={assetName} className="text-center py-1 px-2 text-sm">
                             <div className="flex flex-col items-center gap-1">
                               <span
-                                className={`font-medium ${
+                                className={`font-medium text-xs ${
                                   isPositive ? "text-green-600" : isNegative ? "text-red-600" : "text-gray-600"
                                 }`}
                               >
@@ -577,7 +622,17 @@ export function EventChart({ event }: EventChartProps) {
       {comprehensiveData && (
         <Card>
           <CardHeader>
-            <CardTitle>Complete Calendar Data Table</CardTitle>
+            <CardTitle className="flex items-center justify-between">
+              <span>Complete Calendar Data Table</span>
+              <Button
+                onClick={() => copyTableToClipboard("calendar-data-table", "Complete Calendar Data")}
+                variant="outline"
+                size="sm"
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                Copy Table
+              </Button>
+            </CardTitle>
             <CardDescription>
               All calendar days from -30d to +60d including weekends. Missing prices forward-filled from previous day.
             </CardDescription>
@@ -616,20 +671,20 @@ export function EventChart({ event }: EventChartProps) {
                   z-index: 30;
                 }
               `}</style>
-              <Table className="frozen-table">
+              <Table className="frozen-table" id="calendar-data-table">
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="min-w-20">Date</TableHead>
-                    <TableHead className="min-w-16 text-center">Days</TableHead>
+                  <TableRow className="h-8">
+                    <TableHead className="min-w-20 py-1 px-2 text-sm">Date</TableHead>
+                    <TableHead className="min-w-16 text-center py-1 px-2 text-sm">Days</TableHead>
                     {Object.keys(comprehensiveData.assetData).map((assetName) => (
-                      <TableHead key={`${assetName}-raw`} className="text-center min-w-24">
+                      <TableHead key={`${assetName}-raw`} className="text-center min-w-24 py-1 px-2 text-sm">
                         {assetName}
                         <br />
                         <span className="text-xs text-gray-500">Raw</span>
                       </TableHead>
                     ))}
                     {Object.keys(comprehensiveData.assetData).map((assetName) => (
-                      <TableHead key={`${assetName}-reindexed`} className="text-center min-w-24">
+                      <TableHead key={`${assetName}-reindexed`} className="text-center min-w-24 py-1 px-2 text-sm">
                         {assetName}
                         <br />
                         <span className="text-xs text-gray-500">Reindexed</span>
@@ -643,8 +698,8 @@ export function EventChart({ event }: EventChartProps) {
                     const daysFromStart = comprehensiveData.daysFromStart[index]
 
                     return (
-                      <TableRow key={date} className={isEventDate ? "bg-red-50" : ""}>
-                        <TableCell className="font-medium">
+                      <TableRow key={date} className={`h-8 ${isEventDate ? "bg-red-50" : ""}`}>
+                        <TableCell className="font-medium py-1 px-2 text-sm">
                           {date}
                           {isEventDate && (
                             <Badge variant="destructive" className="ml-2 text-xs">
@@ -652,7 +707,7 @@ export function EventChart({ event }: EventChartProps) {
                             </Badge>
                           )}
                         </TableCell>
-                        <TableCell className="text-center font-mono text-sm">
+                        <TableCell className="text-center font-mono py-1 px-2 text-sm">
                           <span className={isEventDate ? "font-bold text-red-600" : ""}>
                             {daysFromStart === 0 ? "0d" : `${daysFromStart > 0 ? "+" : ""}${daysFromStart}d`}
                           </span>
@@ -660,7 +715,7 @@ export function EventChart({ event }: EventChartProps) {
 
                         {/* Raw Prices */}
                         {Object.entries(comprehensiveData.assetData).map(([assetName, data]) => (
-                          <TableCell key={`${assetName}-raw-${index}`} className="text-center">
+                          <TableCell key={`${assetName}-raw-${index}`} className="text-center py-1 px-2 text-sm">
                             {data.prices[index]?.toFixed(assetName === "10Y Treasury Yield" ? 3 : 2) || "N/A"}
                             {assetName === "10Y Treasury Yield" && "%"}
                           </TableCell>
@@ -672,7 +727,10 @@ export function EventChart({ event }: EventChartProps) {
                           const change = reindexedValue - 100
 
                           return (
-                            <TableCell key={`${assetName}-reindexed-${index}`} className="text-center">
+                            <TableCell
+                              key={`${assetName}-reindexed-${index}`}
+                              className="text-center py-1 px-2 text-sm"
+                            >
                               <div className="flex items-center justify-center gap-1">
                                 <span>{reindexedValue?.toFixed(2) || "N/A"}</span>
                                 {!isEventDate && change !== 0 && (

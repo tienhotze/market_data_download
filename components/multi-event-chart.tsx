@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Loader2, TrendingUp, TrendingDown, RefreshCw } from "lucide-react"
+import { Loader2, TrendingUp, TrendingDown, RefreshCw, Copy } from "lucide-react"
 import dynamic from "next/dynamic"
 import type { EventData } from "@/types"
 import { eventDataDB } from "@/lib/indexeddb"
@@ -67,6 +67,30 @@ const EVENT_COLORS = [
 
 // Global cache for storing downloaded data - persists across component re-renders
 const globalMultiEventDataCache: DataCache | null = null
+
+const copyTableToClipboard = async (tableId: string, tableName: string) => {
+  try {
+    const table = document.getElementById(tableId)
+    if (!table) return
+
+    let csvContent = ""
+    const rows = table.querySelectorAll("tr")
+
+    rows.forEach((row) => {
+      const cells = row.querySelectorAll("th, td")
+      const rowData = Array.from(cells).map((cell) => {
+        const text = cell.textContent?.trim() || ""
+        return text.replace(/\s+/g, " ").replace(/,/g, ";")
+      })
+      csvContent += rowData.join(",") + "\n"
+    })
+
+    await navigator.clipboard.writeText(csvContent)
+    console.log(`${tableName} copied to clipboard`)
+  } catch (error) {
+    console.error("Failed to copy table:", error)
+  }
+}
 
 export function MultiEventChart({ events }: MultiEventChartProps) {
   const [selectedAsset, setSelectedAsset] = useState("S&P 500")
@@ -715,7 +739,17 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
           {/* Multi-Event Data Table */}
           <Card>
             <CardHeader>
-              <CardTitle>Multi-Event Data Table</CardTitle>
+              <CardTitle className="flex items-center justify-between">
+                <span>Multi-Event Data Table</span>
+                <Button
+                  onClick={() => copyTableToClipboard("multi-event-table", "Multi-Event Data")}
+                  variant="outline"
+                  size="sm"
+                >
+                  <Copy className="h-4 w-4 mr-2" />
+                  Copy Table
+                </Button>
+              </CardTitle>
               <CardDescription>
                 Reindexed values for {selectedAsset} across {multiEventData.eventData.length} events with statistical
                 aggregations
@@ -746,19 +780,19 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                     z-index: 30;
                   }
                 `}</style>
-                <Table className="frozen-table">
+                <Table className="frozen-table" id="multi-event-table">
                   <TableHeader>
-                    <TableRow>
-                      <TableHead className="min-w-16">Days</TableHead>
+                    <TableRow className="h-8">
+                      <TableHead className="min-w-16 py-1 px-2 text-sm">Days</TableHead>
                       {multiEventData.eventData.map((eventData) => (
-                        <TableHead key={eventData.eventId} className="text-center min-w-24">
+                        <TableHead key={eventData.eventId} className="text-center min-w-24 py-1 px-2 text-sm">
                           {eventData.eventName}
                           <br />
                           <span className="text-xs text-gray-500">{eventData.eventDate}</span>
                         </TableHead>
                       ))}
-                      <TableHead className="text-center min-w-20 bg-blue-50">Average</TableHead>
-                      <TableHead className="text-center min-w-20 bg-green-50">Median</TableHead>
+                      <TableHead className="text-center min-w-20 bg-blue-50 py-1 px-2 text-sm">Average</TableHead>
+                      <TableHead className="text-center min-w-20 bg-green-50 py-1 px-2 text-sm">Median</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -766,8 +800,8 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                       const isStartDate = dayLabel === "0d"
 
                       return (
-                        <TableRow key={dayLabel} className={isStartDate ? "bg-red-50" : ""}>
-                          <TableCell className="font-medium">
+                        <TableRow key={dayLabel} className={`h-8 ${isStartDate ? "bg-red-50" : ""}`}>
+                          <TableCell className="font-medium py-1 px-2 text-sm">
                             <span className={isStartDate ? "font-bold text-red-600" : ""}>{dayLabel}</span>
                           </TableCell>
 
@@ -777,7 +811,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                             const change = value - 100
 
                             return (
-                              <TableCell key={eventData.eventId} className="text-center">
+                              <TableCell key={eventData.eventId} className="text-center py-1 px-2 text-sm">
                                 <div className="flex items-center justify-center gap-1">
                                   <span>{value?.toFixed(2) || "N/A"}</span>
                                   {!isStartDate && change !== 0 && (
@@ -795,12 +829,12 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                           })}
 
                           {/* Average */}
-                          <TableCell className="text-center bg-blue-50">
+                          <TableCell className="text-center bg-blue-50 py-1 px-2 text-sm">
                             <span className="font-semibold">{multiEventData.averageData[index]?.toFixed(2)}</span>
                           </TableCell>
 
                           {/* Median */}
-                          <TableCell className="text-center bg-green-50">
+                          <TableCell className="text-center bg-green-50 py-1 px-2 text-sm">
                             <span className="font-semibold">{multiEventData.medianData[index]?.toFixed(2)}</span>
                           </TableCell>
                         </TableRow>
@@ -815,158 +849,177 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
           {/* Performance Summary Table */}
           <Card>
             <CardHeader>
-              <CardTitle>Performance Summary</CardTitle>
+              <CardTitle className="flex items-center justify-between">
+                <span>Performance Summary</span>
+                <Button
+                  onClick={() => copyTableToClipboard("performance-summary-table", "Performance Summary")}
+                  variant="outline"
+                  size="sm"
+                >
+                  <Copy className="h-4 w-4 mr-2" />
+                  Copy Table
+                </Button>
+              </CardTitle>
               <CardDescription>
                 Percentage changes from event start date and maximum drawdown for each event
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="overflow-auto">
-                <Table>
+              <div>
+                <Table id="performance-summary-table">
                   <TableHeader>
-                    <TableRow>
-                      <TableHead className="min-w-48">Event</TableHead>
-                      <TableHead className="text-center min-w-20">7d %</TableHead>
-                      <TableHead className="text-center min-w-20">14d %</TableHead>
-                      <TableHead className="text-center min-w-20">30d %</TableHead>
-                      <TableHead className="text-center min-w-20">60d %</TableHead>
-                      <TableHead className="text-center min-w-20">90d %</TableHead>
-                      <TableHead className="text-center min-w-24">Max Drawdown %</TableHead>
+                    <TableRow className="h-8">
+                      <TableHead className="min-w-48 py-1 px-2 text-sm">Event</TableHead>
+                      <TableHead className="text-center min-w-20 py-1 px-2 text-sm">7d %</TableHead>
+                      <TableHead className="text-center min-w-20 py-1 px-2 text-sm">14d %</TableHead>
+                      <TableHead className="text-center min-w-20 py-1 px-2 text-sm">30d %</TableHead>
+                      <TableHead className="text-center min-w-20 py-1 px-2 text-sm">60d %</TableHead>
+                      <TableHead className="text-center min-w-20 py-1 px-2 text-sm">90d %</TableHead>
+                      <TableHead className="text-center min-w-24 py-1 px-2 text-sm">Max Drawdown %</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {multiEventData.eventData.map((eventData) => {
-                      const startValue = 100 // Event start date value
-                      const day7Value = eventData.reindexedData[37] // Index 37 = Day +7
-                      const day14Value = eventData.reindexedData[44] // Index 44 = Day +14
-                      const day30Value = eventData.reindexedData[60] // Index 60 = Day +30
-                      const day60Value = eventData.reindexedData[90] // Index 90 = Day +60
-                      const day90Value = eventData.reindexedData[120] // Index 120 = Day +90
+                      const startValue = 100
+                      const day7Value = eventData.reindexedData[37]
+                      const day14Value = eventData.reindexedData[44]
+                      const day30Value = eventData.reindexedData[60]
+                      const day60Value = eventData.reindexedData[90]
+                      const day90Value = eventData.reindexedData[120]
 
-                      // Calculate percentage changes
                       const day7Change = ((day7Value - startValue) / startValue) * 100
                       const day14Change = ((day14Value - startValue) / startValue) * 100
                       const day30Change = ((day30Value - startValue) / startValue) * 100
                       const day60Change = ((day60Value - startValue) / startValue) * 100
                       const day90Change = ((day90Value - startValue) / startValue) * 100
 
-                      // Calculate max drawdown from start date to day +90
-                      const postEventData = eventData.reindexedData.slice(30, 121) // From day 0 to day +90
+                      const postEventData = eventData.reindexedData.slice(30, 121)
                       const minValue = Math.min(...postEventData)
                       const maxDrawdown = ((minValue - startValue) / startValue) * 100
 
                       return (
-                        <TableRow key={eventData.eventId}>
-                          <TableCell className="font-medium">
+                        <TableRow key={eventData.eventId} className="h-8">
+                          <TableCell className="font-medium py-1 px-2 text-sm">
                             <div>
                               <div className="font-semibold">{eventData.eventName}</div>
                               <div className="text-xs text-gray-500">{eventData.eventDate}</div>
                             </div>
                           </TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="text-center py-1 px-2 text-sm">
                             <span className={`font-medium ${day7Change >= 0 ? "text-green-600" : "text-red-600"}`}>
                               {day7Change?.toFixed(2) || "N/A"}%
                             </span>
                           </TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="text-center py-1 px-2 text-sm">
                             <span className={`font-medium ${day14Change >= 0 ? "text-green-600" : "text-red-600"}`}>
                               {day14Change?.toFixed(2) || "N/A"}%
                             </span>
                           </TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="text-center py-1 px-2 text-sm">
                             <span className={`font-medium ${day30Change >= 0 ? "text-green-600" : "text-red-600"}`}>
                               {day30Change?.toFixed(2) || "N/A"}%
                             </span>
                           </TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="text-center py-1 px-2 text-sm">
                             <span className={`font-medium ${day60Change >= 0 ? "text-green-600" : "text-red-600"}`}>
                               {day60Change?.toFixed(2) || "N/A"}%
                             </span>
                           </TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="text-center py-1 px-2 text-sm">
                             <span className={`font-medium ${day90Change >= 0 ? "text-green-600" : "text-red-600"}`}>
                               {day90Change?.toFixed(2) || "N/A"}%
                             </span>
                           </TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="text-center py-1 px-2 text-sm">
                             <span className="font-medium text-red-600">{maxDrawdown?.toFixed(2) || "N/A"}%</span>
                           </TableCell>
                         </TableRow>
                       )
                     })}
 
-                    {/* Total Events Row */}
-                    <TableRow className="bg-gray-100 font-semibold">
-                      <TableCell className="font-bold">Total Events</TableCell>
-                      <TableCell className="text-center">
+                    {/* Summary rows with reduced spacing */}
+                    <TableRow className="bg-gray-100 font-semibold h-8">
+                      <TableCell className="font-bold py-1 px-2 text-sm">Total Events</TableCell>
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         <span className="text-gray-700">{multiEventData.eventData.length}</span>
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         <span className="text-gray-700">{multiEventData.eventData.length}</span>
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         <span className="text-gray-700">{multiEventData.eventData.length}</span>
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         <span className="text-gray-700">{multiEventData.eventData.length}</span>
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         <span className="text-gray-700">{multiEventData.eventData.length}</span>
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         <span className="text-gray-700">{multiEventData.eventData.length}</span>
                       </TableCell>
                     </TableRow>
 
+                    {/* Continue with other summary rows using the same h-8 and py-1 px-2 text-sm pattern... */}
                     {/* Average Row */}
-                    <TableRow className="bg-blue-50 font-semibold">
-                      <TableCell className="font-bold">Average</TableCell>
-                      <TableCell className="text-center">
+                    <TableRow className="bg-blue-50 font-semibold h-8">
+                      <TableCell className="font-bold py-1 px-2 text-sm">Average</TableCell>
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const values = multiEventData.eventData
                             .map((e) => ((e.reindexedData[37] - 100) / 100) * 100)
                             .filter((v) => !isNaN(v))
                           const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0
-                          return <span className={avg >= 0 ? "text-green-600" : "text-red-600"}>{avg.toFixed(2)}%</span>
+                          return (
+                            <span className={`${avg >= 0 ? "text-green-600" : "text-red-600"}`}>{avg.toFixed(2)}%</span>
+                          )
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const values = multiEventData.eventData
                             .map((e) => ((e.reindexedData[44] - 100) / 100) * 100)
                             .filter((v) => !isNaN(v))
                           const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0
-                          return <span className={avg >= 0 ? "text-green-600" : "text-red-600"}>{avg.toFixed(2)}%</span>
+                          return (
+                            <span className={`${avg >= 0 ? "text-green-600" : "text-red-600"}`}>{avg.toFixed(2)}%</span>
+                          )
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const values = multiEventData.eventData
                             .map((e) => ((e.reindexedData[60] - 100) / 100) * 100)
                             .filter((v) => !isNaN(v))
                           const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0
-                          return <span className={avg >= 0 ? "text-green-600" : "text-red-600"}>{avg.toFixed(2)}%</span>
+                          return (
+                            <span className={`${avg >= 0 ? "text-green-600" : "text-red-600"}`}>{avg.toFixed(2)}%</span>
+                          )
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const values = multiEventData.eventData
                             .map((e) => ((e.reindexedData[90] - 100) / 100) * 100)
                             .filter((v) => !isNaN(v))
                           const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0
-                          return <span className={avg >= 0 ? "text-green-600" : "text-red-600"}>{avg.toFixed(2)}%</span>
+                          return (
+                            <span className={`${avg >= 0 ? "text-green-600" : "text-red-600"}`}>{avg.toFixed(2)}%</span>
+                          )
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const values = multiEventData.eventData
                             .map((e) => ((e.reindexedData[120] - 100) / 100) * 100)
                             .filter((v) => !isNaN(v))
                           const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0
-                          return <span className={avg >= 0 ? "text-green-600" : "text-red-600"}>{avg.toFixed(2)}%</span>
+                          return (
+                            <span className={`${avg >= 0 ? "text-green-600" : "text-red-600"}`}>{avg.toFixed(2)}%</span>
+                          )
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const values = multiEventData.eventData
                             .map((e) => {
@@ -982,9 +1035,9 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                     </TableRow>
 
                     {/* Median Row */}
-                    <TableRow className="bg-green-50 font-semibold">
-                      <TableCell className="font-bold">Median</TableCell>
-                      <TableCell className="text-center">
+                    <TableRow className="bg-green-50 font-semibold h-8">
+                      <TableCell className="font-bold py-1 px-2 text-sm">Median</TableCell>
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const values = multiEventData.eventData
                             .map((e) => ((e.reindexedData[37] - 100) / 100) * 100)
@@ -997,13 +1050,13 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                                 : values[Math.floor(values.length / 2)]
                               : 0
                           return (
-                            <span className={median >= 0 ? "text-green-600" : "text-red-600"}>
+                            <span className={`${median >= 0 ? "text-green-600" : "text-red-600"}`}>
                               {median.toFixed(2)}%
                             </span>
                           )
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const values = multiEventData.eventData
                             .map((e) => ((e.reindexedData[44] - 100) / 100) * 100)
@@ -1016,13 +1069,13 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                                 : values[Math.floor(values.length / 2)]
                               : 0
                           return (
-                            <span className={median >= 0 ? "text-green-600" : "text-red-600"}>
+                            <span className={`${median >= 0 ? "text-green-600" : "text-red-600"}`}>
                               {median.toFixed(2)}%
                             </span>
                           )
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const values = multiEventData.eventData
                             .map((e) => ((e.reindexedData[60] - 100) / 100) * 100)
@@ -1035,13 +1088,13 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                                 : values[Math.floor(values.length / 2)]
                               : 0
                           return (
-                            <span className={median >= 0 ? "text-green-600" : "text-red-600"}>
+                            <span className={`${median >= 0 ? "text-green-600" : "text-red-600"}`}>
                               {median.toFixed(2)}%
                             </span>
                           )
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const values = multiEventData.eventData
                             .map((e) => ((e.reindexedData[90] - 100) / 100) * 100)
@@ -1054,13 +1107,13 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                                 : values[Math.floor(values.length / 2)]
                               : 0
                           return (
-                            <span className={median >= 0 ? "text-green-600" : "text-red-600"}>
+                            <span className={`${median >= 0 ? "text-green-600" : "text-red-600"}`}>
                               {median.toFixed(2)}%
                             </span>
                           )
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const values = multiEventData.eventData
                             .map((e) => ((e.reindexedData[120] - 100) / 100) * 100)
@@ -1073,13 +1126,13 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                                 : values[Math.floor(values.length / 2)]
                               : 0
                           return (
-                            <span className={median >= 0 ? "text-green-600" : "text-red-600"}>
+                            <span className={`${median >= 0 ? "text-green-600" : "text-red-600"}`}>
                               {median.toFixed(2)}%
                             </span>
                           )
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const values = multiEventData.eventData
                             .map((e) => {
@@ -1101,9 +1154,9 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                     </TableRow>
 
                     {/* Count of Positive Changes Row */}
-                    <TableRow className="bg-yellow-50 font-semibold">
-                      <TableCell className="font-bold">Count +ve Changes</TableCell>
-                      <TableCell className="text-center">
+                    <TableRow className="bg-yellow-50 font-semibold h-8">
+                      <TableCell className="font-bold py-1 px-2 text-sm">Count +ve Changes</TableCell>
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const count = multiEventData.eventData
                             .map((e) => ((e.reindexedData[37] - 100) / 100) * 100)
@@ -1111,7 +1164,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                           return <span className="text-blue-600">{count}</span>
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const count = multiEventData.eventData
                             .map((e) => ((e.reindexedData[44] - 100) / 100) * 100)
@@ -1119,7 +1172,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                           return <span className="text-blue-600">{count}</span>
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const count = multiEventData.eventData
                             .map((e) => ((e.reindexedData[60] - 100) / 100) * 100)
@@ -1127,7 +1180,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                           return <span className="text-blue-600">{count}</span>
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const count = multiEventData.eventData
                             .map((e) => ((e.reindexedData[90] - 100) / 100) * 100)
@@ -1135,7 +1188,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                           return <span className="text-blue-600">{count}</span>
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const count = multiEventData.eventData
                             .map((e) => ((e.reindexedData[120] - 100) / 100) * 100)
@@ -1143,15 +1196,15 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                           return <span className="text-blue-600">{count}</span>
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         <span className="text-gray-400">N/A</span>
                       </TableCell>
                     </TableRow>
 
                     {/* Percentage of Positive Changes Row */}
-                    <TableRow className="bg-orange-50 font-semibold">
-                      <TableCell className="font-bold">% +ve Changes</TableCell>
-                      <TableCell className="text-center">
+                    <TableRow className="bg-orange-50 font-semibold h-8">
+                      <TableCell className="font-bold py-1 px-2 text-sm">% +ve Changes</TableCell>
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const validValues = multiEventData.eventData
                             .map((e) => ((e.reindexedData[37] - 100) / 100) * 100)
@@ -1161,7 +1214,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                           return <span className="text-blue-600">{percentage.toFixed(1)}%</span>
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const validValues = multiEventData.eventData
                             .map((e) => ((e.reindexedData[44] - 100) / 100) * 100)
@@ -1171,7 +1224,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                           return <span className="text-blue-600">{percentage.toFixed(1)}%</span>
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const validValues = multiEventData.eventData
                             .map((e) => ((e.reindexedData[60] - 100) / 100) * 100)
@@ -1181,7 +1234,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                           return <span className="text-blue-600">{percentage.toFixed(1)}%</span>
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const validValues = multiEventData.eventData
                             .map((e) => ((e.reindexedData[90] - 100) / 100) * 100)
@@ -1191,7 +1244,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                           return <span className="text-blue-600">{percentage.toFixed(1)}%</span>
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         {(() => {
                           const validValues = multiEventData.eventData
                             .map((e) => ((e.reindexedData[120] - 100) / 100) * 100)
@@ -1201,7 +1254,7 @@ export function MultiEventChart({ events }: MultiEventChartProps) {
                           return <span className="text-blue-600">{percentage.toFixed(1)}%</span>
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-1 px-2 text-sm">
                         <span className="text-gray-400">N/A</span>
                       </TableCell>
                     </TableRow>
