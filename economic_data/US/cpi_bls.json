@@ -1,0 +1,730 @@
+{
+  "series": "cpi",
+  "seriesName": "Consumer Price Index",
+  "source": "BLS",
+  "unit": "Index",
+  "frequency": "monthly",
+  "lastUpdated": "2025-06-18T17:37:25.155Z",
+  "data": [
+    {
+      "date": "2014-01-01",
+      "value": 233.916,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2014-02-01",
+      "value": 234.781,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2014-03-01",
+      "value": 236.293,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2014-04-01",
+      "value": 237.072,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2014-05-01",
+      "value": 237.9,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2014-06-01",
+      "value": 238.343,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2014-07-01",
+      "value": 238.25,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2014-08-01",
+      "value": 237.852,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2014-09-01",
+      "value": 238.031,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2014-10-01",
+      "value": 237.433,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2014-11-01",
+      "value": 236.151,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2014-12-01",
+      "value": 234.812,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2015-01-01",
+      "value": 233.707,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2015-02-01",
+      "value": 234.722,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2015-03-01",
+      "value": 236.119,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2015-04-01",
+      "value": 236.599,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2015-05-01",
+      "value": 237.805,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2015-06-01",
+      "value": 238.638,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2015-07-01",
+      "value": 238.654,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2015-08-01",
+      "value": 238.316,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2015-09-01",
+      "value": 237.945,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2015-10-01",
+      "value": 237.838,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2015-11-01",
+      "value": 237.336,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2015-12-01",
+      "value": 236.525,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2016-01-01",
+      "value": 236.916,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2016-02-01",
+      "value": 237.111,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2016-03-01",
+      "value": 238.132,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2016-04-01",
+      "value": 239.261,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2016-05-01",
+      "value": 240.229,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2016-06-01",
+      "value": 241.018,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2016-07-01",
+      "value": 240.628,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2016-08-01",
+      "value": 240.849,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2016-09-01",
+      "value": 241.428,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2016-10-01",
+      "value": 241.729,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2016-11-01",
+      "value": 241.353,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2016-12-01",
+      "value": 241.432,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2017-01-01",
+      "value": 242.839,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2017-02-01",
+      "value": 243.603,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2017-03-01",
+      "value": 243.801,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2017-04-01",
+      "value": 244.524,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2017-05-01",
+      "value": 244.733,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2017-06-01",
+      "value": 244.955,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2017-07-01",
+      "value": 244.786,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2017-08-01",
+      "value": 245.519,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2017-09-01",
+      "value": 246.819,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2017-10-01",
+      "value": 246.663,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2017-11-01",
+      "value": 246.669,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2017-12-01",
+      "value": 246.524,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2018-01-01",
+      "value": 247.867,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2018-02-01",
+      "value": 248.991,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2018-03-01",
+      "value": 249.554,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2018-04-01",
+      "value": 250.546,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2018-05-01",
+      "value": 251.588,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2018-06-01",
+      "value": 251.989,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2018-07-01",
+      "value": 252.006,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2018-08-01",
+      "value": 252.146,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2018-09-01",
+      "value": 252.439,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2018-10-01",
+      "value": 252.885,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2018-11-01",
+      "value": 252.038,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2018-12-01",
+      "value": 251.233,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2019-01-01",
+      "value": 251.712,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2019-02-01",
+      "value": 252.776,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2019-03-01",
+      "value": 254.202,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2019-04-01",
+      "value": 255.548,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2019-05-01",
+      "value": 256.092,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2019-06-01",
+      "value": 256.143,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2019-07-01",
+      "value": 256.571,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2019-08-01",
+      "value": 256.558,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2019-09-01",
+      "value": 256.759,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2019-10-01",
+      "value": 257.346,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2019-11-01",
+      "value": 257.208,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2019-12-01",
+      "value": 256.974,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2020-01-01",
+      "value": 257.971,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2020-02-01",
+      "value": 258.678,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2020-03-01",
+      "value": 258.115,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2020-04-01",
+      "value": 256.389,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2020-05-01",
+      "value": 256.394,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2020-06-01",
+      "value": 257.797,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2020-07-01",
+      "value": 259.101,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2020-08-01",
+      "value": 259.918,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2020-09-01",
+      "value": 260.28,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2020-10-01",
+      "value": 260.388,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2020-11-01",
+      "value": 260.229,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2020-12-01",
+      "value": 260.474,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2021-01-01",
+      "value": 261.582,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2021-02-01",
+      "value": 263.014,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2021-03-01",
+      "value": 264.877,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2021-04-01",
+      "value": 267.054,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2021-05-01",
+      "value": 269.195,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2021-06-01",
+      "value": 271.696,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2021-07-01",
+      "value": 273.003,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2021-08-01",
+      "value": 273.567,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2021-09-01",
+      "value": 274.31,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2021-10-01",
+      "value": 276.589,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2021-11-01",
+      "value": 277.948,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2021-12-01",
+      "value": 278.802,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2022-01-01",
+      "value": 281.148,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2022-02-01",
+      "value": 283.716,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2022-03-01",
+      "value": 287.504,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2022-04-01",
+      "value": 289.109,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2022-05-01",
+      "value": 292.296,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2022-06-01",
+      "value": 296.311,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2022-07-01",
+      "value": 296.276,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2022-08-01",
+      "value": 296.171,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2022-09-01",
+      "value": 296.808,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2022-10-01",
+      "value": 298.012,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2022-11-01",
+      "value": 297.711,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2022-12-01",
+      "value": 296.797,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2023-01-01",
+      "value": 299.17,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2023-02-01",
+      "value": 300.84,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2023-03-01",
+      "value": 301.836,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2023-04-01",
+      "value": 303.363,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2023-05-01",
+      "value": 304.127,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2023-06-01",
+      "value": 305.109,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2023-07-01",
+      "value": 305.691,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2023-08-01",
+      "value": 307.026,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2023-09-01",
+      "value": 307.789,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2023-10-01",
+      "value": 307.671,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2023-11-01",
+      "value": 307.051,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    },
+    {
+      "date": "2023-12-01",
+      "value": 306.746,
+      "series": "CUUR0000SA0",
+      "seriesName": "Consumer Price Index"
+    }
+  ]
+}
