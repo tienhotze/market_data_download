@@ -1,10 +1,24 @@
-"use client"
+"use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { TrendingUp, Calendar, BarChart3, Download, Activity, DollarSign, Building2 } from "lucide-react"
-import Link from "next/link"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  TrendingUp,
+  Calendar,
+  BarChart3,
+  Download,
+  Activity,
+  DollarSign,
+  Building2,
+} from "lucide-react";
+import Link from "next/link";
 
 export default function HomePage() {
   return (
@@ -12,9 +26,12 @@ export default function HomePage() {
       <div className="max-w-7xl mx-auto p-6">
         {/* Header */}
         <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-gray-900 mb-4">Market Wizard</h1>
+          <h1 className="text-5xl font-bold text-gray-900 mb-4">
+            Market Wizard
+          </h1>
           <p className="text-xl text-gray-600 mb-8">
-            Comprehensive financial analysis platform for market data, events, and economic indicators
+            Comprehensive financial analysis platform for market data, events,
+            and economic indicators
           </p>
           <div className="flex justify-center gap-4 text-sm text-gray-500">
             <div className="flex items-center gap-1">
@@ -45,9 +62,12 @@ export default function HomePage() {
                   Market Data
                 </Badge>
               </div>
-              <CardTitle className="text-xl text-gray-900">Market Data Download</CardTitle>
+              <CardTitle className="text-xl text-gray-900">
+                Market Data Download
+              </CardTitle>
               <CardDescription className="text-gray-600">
-                Download and analyze historical market data for stocks, indices, commodities, and currencies
+                Download and analyze historical market data for stocks, indices,
+                commodities, and currencies
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-0">
@@ -66,7 +86,9 @@ export default function HomePage() {
                 </div>
               </div>
               <Link href="/market-data">
-                <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white">Access Market Data</Button>
+                <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+                  Access Market Data
+                </Button>
               </Link>
             </CardContent>
           </Card>
@@ -78,13 +100,19 @@ export default function HomePage() {
                 <div className="p-3 bg-green-100 rounded-lg group-hover:bg-green-200 transition-colors">
                   <Calendar className="h-8 w-8 text-green-600" />
                 </div>
-                <Badge variant="secondary" className="bg-green-50 text-green-700">
+                <Badge
+                  variant="secondary"
+                  className="bg-green-50 text-green-700"
+                >
                   Events
                 </Badge>
               </div>
-              <CardTitle className="text-xl text-gray-900">Event Analysis</CardTitle>
+              <CardTitle className="text-xl text-gray-900">
+                Event Analysis
+              </CardTitle>
               <CardDescription className="text-gray-600">
-                Analyze market performance around significant economic and political events
+                Analyze market performance around significant economic and
+                political events
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-0">
@@ -103,7 +131,9 @@ export default function HomePage() {
                 </div>
               </div>
               <Link href="/event-analysis">
-                <Button className="w-full bg-green-600 hover:bg-green-700 text-white">Analyze Events</Button>
+                <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
+                  Analyze Events
+                </Button>
               </Link>
             </CardContent>
           </Card>
@@ -115,20 +145,26 @@ export default function HomePage() {
                 <div className="p-3 bg-purple-100 rounded-lg group-hover:bg-purple-200 transition-colors">
                   <BarChart3 className="h-8 w-8 text-purple-600" />
                 </div>
-                <Badge variant="secondary" className="bg-purple-50 text-purple-700">
+                <Badge
+                  variant="secondary"
+                  className="bg-purple-50 text-purple-700"
+                >
                   Economics
                 </Badge>
               </div>
-              <CardTitle className="text-xl text-gray-900">Economic Data Analysis</CardTitle>
+              <CardTitle className="text-xl text-gray-900">
+                Economic Data Analysis
+              </CardTitle>
               <CardDescription className="text-gray-600">
-                Track and forecast economic indicators including jobs, inflation, GDP, and retail sales
+                Track and forecast economic indicators including jobs,
+                inflation, GDP, and retail sales
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-0">
               <div className="space-y-3 mb-6">
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-                  <span>BLS & BEA data integration with GitHub storage</span>
+                  <span>Economic data sourced from a dedicated database</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
@@ -140,7 +176,9 @@ export default function HomePage() {
                 </div>
               </div>
               <Link href="/economic-analysis">
-                <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white">Analyze Economics</Button>
+                <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white">
+                  Analyze Economics
+                </Button>
               </Link>
             </CardContent>
           </Card>
@@ -184,5 +222,5 @@ export default function HomePage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -1,40 +1,65 @@
-"use client"
+"use client";
 
-import { useMemo } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
-import { TrendingUp, Copy } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
+import { useMemo } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  Dot,
+  Brush,
+} from "recharts";
+import { TrendingUp, Copy } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { EconomicPivotTable } from "./economic-pivot-table";
 
 interface EconomicDataPoint {
-  date: string
-  value: number
-  series: string
-  seriesName: string
+  date: string;
+  value: number;
+  series: string;
+  seriesName: string;
 }
 
 interface EconomicSeries {
-  series: string
-  seriesName: string
-  data: EconomicDataPoint[]
-  source: string
-  unit: string
-  frequency: string
+  series: string;
+  seriesName: string;
+  data: EconomicDataPoint[];
+  source: string;
+  unit: string;
+  frequency: string;
 }
 
 interface EconomicChartProps {
-  data: EconomicSeries
+  data: EconomicSeries;
   showMovingAverages: {
-    ma3: boolean
-    ma6: boolean
-    ma12: boolean
-  }
-  showProjections: boolean
-  projectionMonths: number
-  loading: boolean
+    ma3: boolean;
+    ma6: boolean;
+    ma12: boolean;
+  };
+  showProjections: boolean;
+  projectionMonths: number;
+  loading: boolean;
 }
 
 export function EconomicChart({
@@ -44,12 +69,14 @@ export function EconomicChart({
   projectionMonths,
   loading,
 }: EconomicChartProps) {
-  const { toast } = useToast()
+  const { toast } = useToast();
 
-  const processedData = useMemo(() => {
-    if (!data?.data) return []
+  const dataWithChanges = useMemo(() => {
+    if (!data?.data) return [];
 
-    const sortedData = [...data.data].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    const sortedData = [...data.data].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
 
     return sortedData.map((point, index) => {
       const result: any = {
@@ -59,87 +86,126 @@ export function EconomicChart({
           year: "numeric",
           month: "short",
         }),
-      }
+      };
 
-      // Calculate moving averages
-      if (showMovingAverages.ma3 && index >= 2) {
-        const values = sortedData.slice(index - 2, index + 1).map((d) => d.value)
-        result.ma3 = values.reduce((sum, val) => sum + val, 0) / values.length
-      }
-
-      if (showMovingAverages.ma6 && index >= 5) {
-        const values = sortedData.slice(index - 5, index + 1).map((d) => d.value)
-        result.ma6 = values.reduce((sum, val) => sum + val, 0) / values.length
-      }
-
-      if (showMovingAverages.ma12 && index >= 11) {
-        const values = sortedData.slice(index - 11, index + 1).map((d) => d.value)
-        result.ma12 = values.reduce((sum, val) => sum + val, 0) / values.length
+      // Calculate month-over-month change
+      if (index > 0) {
+        const prevValue = sortedData[index - 1].value;
+        if (prevValue !== 0) {
+          result.momChange = ((point.value - prevValue) / prevValue) * 100;
+        }
       }
 
       // Calculate year-over-year change
       if (index >= 12) {
-        const previousYearValue = sortedData[index - 12].value
-        result.yoyChange = ((point.value - previousYearValue) / previousYearValue) * 100
+        const previousYearValue = sortedData[index - 12].value;
+        if (previousYearValue !== 0) {
+          result.yoyChange =
+            ((point.value - previousYearValue) / previousYearValue) * 100;
+        }
       }
 
-      return result
-    })
-  }, [data, showMovingAverages])
+      return result;
+    });
+  }, [data]);
+
+  const processedData = useMemo(() => {
+    return dataWithChanges.map((point, index) => {
+      const result = { ...point };
+
+      const momChanges = dataWithChanges
+        .slice(0, index + 1)
+        .map((p) => p.momChange)
+        .filter((c) => c !== undefined);
+
+      if (showMovingAverages.ma3 && momChanges.length >= 3) {
+        result.ma3 =
+          momChanges.slice(-3).reduce((sum, val) => sum + val, 0) / 3;
+      }
+      if (showMovingAverages.ma6 && momChanges.length >= 6) {
+        result.ma6 =
+          momChanges.slice(-6).reduce((sum, val) => sum + val, 0) / 6;
+      }
+      if (showMovingAverages.ma12 && momChanges.length >= 12) {
+        result.ma12 =
+          momChanges.slice(-12).reduce((sum, val) => sum + val, 0) / 12;
+      }
+
+      return result;
+    });
+  }, [dataWithChanges, showMovingAverages]);
 
   const projectedData = useMemo(() => {
-    if (!showProjections || !data?.data || data.data.length < 24) return []
+    if (!showProjections || !data?.data || data.data.length < 240) return [];
 
-    const sortedData = [...data.data].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    const projections = []
+    const sortedData = [...data.data].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+    const projections: any[] = [];
 
-    // Calculate seasonal patterns (10-year average of month-over-month % changes)
-    const seasonalPatterns: { [month: number]: number } = {}
+    // Calculate seasonal patterns (20-year average of month-over-month % changes)
+    const seasonalPatterns: { [month: number]: number } = {};
 
     for (let month = 1; month <= 12; month++) {
-      const monthChanges: number[] = []
+      const monthChanges: number[] = [];
 
       for (let i = 1; i < sortedData.length; i++) {
-        const currentDate = new Date(sortedData[i].date)
-        const previousDate = new Date(sortedData[i - 1].date)
+        const currentDate = new Date(sortedData[i].date);
 
         if (currentDate.getMonth() + 1 === month) {
-          const change = ((sortedData[i].value - sortedData[i - 1].value) / sortedData[i - 1].value) * 100
-          monthChanges.push(change)
+          const change =
+            ((sortedData[i].value - sortedData[i - 1].value) /
+              sortedData[i - 1].value) *
+            100;
+          monthChanges.push(change);
         }
       }
 
       if (monthChanges.length > 0) {
-        // Use last 10 years of data for seasonal pattern
-        const recentChanges = monthChanges.slice(-10)
-        seasonalPatterns[month] = recentChanges.reduce((sum, change) => sum + change, 0) / recentChanges.length
+        // Use last 20 years of data for seasonal pattern
+        const recentChanges = monthChanges.slice(-20);
+        seasonalPatterns[month] =
+          recentChanges.reduce((sum, change) => sum + change, 0) /
+          recentChanges.length;
       } else {
-        seasonalPatterns[month] = 0
+        seasonalPatterns[month] = 0;
       }
     }
 
     // Generate projections
-    const lastDataPoint = sortedData[sortedData.length - 1]
-    let currentValue = lastDataPoint.value
-    let currentDate = new Date(lastDataPoint.date)
+    const lastDataPoint = sortedData[sortedData.length - 1];
+    let currentValue = lastDataPoint.value;
+    let currentDate = new Date(lastDataPoint.date);
 
     for (let i = 1; i <= projectionMonths; i++) {
-      currentDate = new Date(currentDate)
-      currentDate.setMonth(currentDate.getMonth() + 1)
+      currentDate = new Date(currentDate);
+      currentDate.setMonth(currentDate.getMonth() + 1);
 
-      const month = currentDate.getMonth() + 1
-      const seasonalChange = seasonalPatterns[month] || 0
-      currentValue = currentValue * (1 + seasonalChange / 100)
+      const month = currentDate.getMonth() + 1;
+      const seasonalChange = seasonalPatterns[month] || 0;
+      currentValue = currentValue * (1 + seasonalChange / 100);
 
       // Calculate projected YoY change
-      let projectedYoyChange = null
-      if (sortedData.length >= 12) {
-        const yearAgoIndex = sortedData.length - 12 + i - 1
-        if (yearAgoIndex >= 0 && yearAgoIndex < sortedData.length) {
-          const yearAgoValue = sortedData[yearAgoIndex].value
-          projectedYoyChange = ((currentValue - yearAgoValue) / yearAgoValue) * 100
+      let projectedYoyChange: number | null = null;
+      const yearAgoIndex = sortedData.length - 12 + i;
+      if (yearAgoIndex < sortedData.length) {
+        const yearAgoValue = sortedData[yearAgoIndex].value;
+        projectedYoyChange =
+          ((currentValue - yearAgoValue) / yearAgoValue) * 100;
+      } else {
+        // need to use a projected value from a year ago
+        const yearAgoProjected: { value: number } = projections[i - 12];
+        if (yearAgoProjected) {
+          projectedYoyChange =
+            ((currentValue - yearAgoProjected.value) / yearAgoProjected.value) *
+            100;
         }
       }
+
+      const lastValue: number =
+        i > 1 ? projections[i - 2].value : lastDataPoint.value;
+      const projectedMomChange: number =
+        ((currentValue - lastValue) / lastValue) * 100;
 
       projections.push({
         date: currentDate.toISOString().split("T")[0],
@@ -150,47 +216,53 @@ export function EconomicChart({
           month: "short",
         }),
         yoyChange: projectedYoyChange,
-      })
+        momChange: projectedMomChange,
+      });
     }
 
-    return projections
-  }, [data, showProjections, projectionMonths])
+    return projections;
+  }, [data, showProjections, projectionMonths, dataWithChanges]);
 
   const chartData = useMemo(() => {
-    return [...processedData, ...projectedData]
-  }, [processedData, projectedData])
+    return [...processedData, ...projectedData];
+  }, [processedData, projectedData]);
 
   const copyTableToClipboard = async () => {
-    const headers = ["Date", "Value", "YoY Change %"]
-    if (showMovingAverages.ma3) headers.push("3M MA")
-    if (showMovingAverages.ma6) headers.push("6M MA")
-    if (showMovingAverages.ma12) headers.push("12M MA")
+    const headers = ["Date", "Value", "MoM % Chg", "YoY % Chg"];
+    if (showMovingAverages.ma3) headers.push("3M MA (MoM)");
+    if (showMovingAverages.ma6) headers.push("6M MA (MoM)");
+    if (showMovingAverages.ma12) headers.push("12M MA (MoM)");
 
     const csvContent = [
       headers.join(","),
       ...chartData.map((row) => {
-        const values = [row.formattedDate, row.value?.toFixed(2) || "", row.yoyChange?.toFixed(2) || ""]
-        if (showMovingAverages.ma3) values.push(row.ma3?.toFixed(2) || "")
-        if (showMovingAverages.ma6) values.push(row.ma6?.toFixed(2) || "")
-        if (showMovingAverages.ma12) values.push(row.ma12?.toFixed(2) || "")
-        return values.join(",")
+        const values = [
+          row.formattedDate,
+          row.value?.toFixed(2) || "",
+          row.momChange?.toFixed(2) || "",
+          row.yoyChange?.toFixed(2) || "",
+        ];
+        if (showMovingAverages.ma3) values.push(row.ma3?.toFixed(2) || "");
+        if (showMovingAverages.ma6) values.push(row.ma6?.toFixed(2) || "");
+        if (showMovingAverages.ma12) values.push(row.ma12?.toFixed(2) || "");
+        return values.join(",");
       }),
-    ].join("\n")
+    ].join("\n");
 
     try {
-      await navigator.clipboard.writeText(csvContent)
+      await navigator.clipboard.writeText(csvContent);
       toast({
         title: "Table copied",
         description: "Economic data table copied to clipboard as CSV",
-      })
+      });
     } catch (error) {
       toast({
         title: "Copy failed",
         description: "Failed to copy table to clipboard",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
   if (loading) {
     return (
@@ -199,7 +271,7 @@ export function EconomicChart({
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   return (
@@ -214,12 +286,21 @@ export function EconomicChart({
                 {data.seriesName}
               </CardTitle>
               <CardDescription>
-                Historical data and projections • Source: {data.source} • Unit: {data.unit}
+                Historical data and projections • Source: {data.source} • Unit:{" "}
+                {data.unit}
+              </CardDescription>
+              <CardDescription className="text-xs text-gray-500 pt-1">
+                Projections are calculated using a 10-year historical average of
+                seasonal month-over-month changes.
               </CardDescription>
             </div>
             <div className="flex gap-2">
               <Badge variant="outline">{data.frequency}</Badge>
-              {showProjections && <Badge variant="secondary">{projectionMonths}M projection</Badge>}
+              {showProjections && (
+                <Badge variant="secondary">
+                  {projectionMonths}M projection
+                </Badge>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -228,35 +309,43 @@ export function EconomicChart({
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="formattedDate" tick={{ fontSize: 12 }} interval="preserveStartEnd" />
-                <YAxis tick={{ fontSize: 12 }} />
+                <XAxis
+                  dataKey="formattedDate"
+                  tick={{ fontSize: 12 }}
+                  interval="preserveStartEnd"
+                  angle={-90}
+                  textAnchor="end"
+                  height={80}
+                />
+                <YAxis
+                  tickFormatter={(value) => `${value.toFixed(1)}%`}
+                  tick={{ fontSize: 12 }}
+                  domain={["auto", "auto"]}
+                />
                 <Tooltip
-                  formatter={(value: any, name: string) => [typeof value === "number" ? value.toFixed(2) : value, name]}
+                  formatter={(value: any, name: string) => [
+                    typeof value === "number" ? `${value.toFixed(2)}%` : value,
+                    name,
+                  ]}
                 />
                 <Legend />
+                <Brush dataKey="formattedDate" height={30} stroke="#2563eb" />
 
                 <Line
                   type="monotone"
-                  dataKey="value"
+                  dataKey="yoyChange"
                   stroke="#2563eb"
                   strokeWidth={2}
-                  name={`${data.seriesName} (${data.unit})`}
+                  name={`${data.seriesName} (YoY % Chg)`}
                   connectNulls={false}
-                  dot={(props) => (props.payload?.isProjected ? { fill: "#dc2626", r: 3 } : false)}
-                  strokeDasharray={(dataPoint) => (dataPoint?.isProjected ? "5 5" : "0")}
+                  dot={(props: any) => {
+                    const { cx, cy, payload } = props;
+                    if (payload?.isProjected) {
+                      return <Dot cx={cx} cy={cy} r={3} fill="#dc2626" />;
+                    }
+                    return <Dot cx={cx} cy={cy} r={0} fill="transparent" />;
+                  }}
                 />
-
-                {showMovingAverages.ma3 && (
-                  <Line type="monotone" dataKey="ma3" stroke="#16a34a" strokeWidth={1} name="3M MA" dot={false} />
-                )}
-
-                {showMovingAverages.ma6 && (
-                  <Line type="monotone" dataKey="ma6" stroke="#ca8a04" strokeWidth={1} name="6M MA" dot={false} />
-                )}
-
-                {showMovingAverages.ma12 && (
-                  <Line type="monotone" dataKey="ma12" stroke="#dc2626" strokeWidth={1} name="12M MA" dot={false} />
-                )}
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -267,67 +356,56 @@ export function EconomicChart({
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Historical Data & Projections</CardTitle>
-            <Button variant="outline" size="sm" onClick={copyTableToClipboard}>
+            <CardTitle>Data Table</CardTitle>
+            <Button variant="ghost" size="sm" onClick={copyTableToClipboard}>
               <Copy className="h-4 w-4 mr-2" />
               Copy Table
             </Button>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="max-h-96 overflow-y-auto">
+          <div className="max-h-[600px] overflow-y-auto">
             <Table>
-              <TableHeader>
-                <TableRow className="h-8">
-                  <TableHead className="py-1 px-2 text-sm">Date</TableHead>
-                  <TableHead className="py-1 px-2 text-sm">Value ({data.unit})</TableHead>
-                  <TableHead className="py-1 px-2 text-sm">YoY Change %</TableHead>
-                  {showMovingAverages.ma3 && <TableHead className="py-1 px-2 text-sm">3M MA</TableHead>}
-                  {showMovingAverages.ma6 && <TableHead className="py-1 px-2 text-sm">6M MA</TableHead>}
-                  {showMovingAverages.ma12 && <TableHead className="py-1 px-2 text-sm">12M MA</TableHead>}
+              <TableHeader className="sticky top-0 bg-card">
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Value ({data.unit})</TableHead>
+                  <TableHead>MoM % Chg</TableHead>
+                  <TableHead>YoY % Chg</TableHead>
+                  {showMovingAverages.ma3 && <TableHead>3M MA (MoM)</TableHead>}
+                  {showMovingAverages.ma6 && <TableHead>6M MA (MoM)</TableHead>}
+                  {showMovingAverages.ma12 && (
+                    <TableHead>12M MA (MoM)</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {chartData
-                  .slice(-24)
-                  .reverse()
-                  .map((row, index) => (
-                    <TableRow key={index} className={`h-8 ${row.isProjected ? "bg-red-50" : ""}`}>
-                      <TableCell className="py-1 px-2 text-sm">
-                        {row.formattedDate}
-                        {row.isProjected && (
-                          <Badge variant="outline" className="ml-2 text-xs">
-                            Projected
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="py-1 px-2 text-sm">{row.value?.toFixed(2)}</TableCell>
-                      <TableCell className="py-1 px-2 text-sm">
-                        {row.yoyChange ? (
-                          <span className={row.yoyChange > 0 ? "text-green-600" : "text-red-600"}>
-                            {row.yoyChange > 0 ? "+" : ""}
-                            {row.yoyChange.toFixed(2)}%
-                          </span>
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      {showMovingAverages.ma3 && (
-                        <TableCell className="py-1 px-2 text-sm">{row.ma3?.toFixed(2) || "-"}</TableCell>
-                      )}
-                      {showMovingAverages.ma6 && (
-                        <TableCell className="py-1 px-2 text-sm">{row.ma6?.toFixed(2) || "-"}</TableCell>
-                      )}
-                      {showMovingAverages.ma12 && (
-                        <TableCell className="py-1 px-2 text-sm">{row.ma12?.toFixed(2) || "-"}</TableCell>
-                      )}
-                    </TableRow>
-                  ))}
+                {[...chartData].reverse().map((row: any, index: number) => (
+                  <TableRow
+                    key={index}
+                    className={row.isProjected ? "bg-red-50" : ""}
+                  >
+                    <TableCell>{row.formattedDate}</TableCell>
+                    <TableCell>{row.value?.toFixed(2)}</TableCell>
+                    <TableCell>{row.momChange?.toFixed(2)}%</TableCell>
+                    <TableCell>{row.yoyChange?.toFixed(2)}%</TableCell>
+                    {showMovingAverages.ma3 && (
+                      <TableCell>{row.ma3?.toFixed(2)}%</TableCell>
+                    )}
+                    {showMovingAverages.ma6 && (
+                      <TableCell>{row.ma6?.toFixed(2)}%</TableCell>
+                    )}
+                    {showMovingAverages.ma12 && (
+                      <TableCell>{row.ma12?.toFixed(2)}%</TableCell>
+                    )}
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </div>
         </CardContent>
       </Card>
+      <EconomicPivotTable data={chartData} />
     </div>
-  )
+  );
 }
