@@ -17,6 +17,8 @@ import {
   Activity,
   DollarSign,
   Building2,
+  Shield,
+  Globe,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -50,7 +52,7 @@ export default function HomePage() {
         </div>
 
         {/* Main Navigation Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
           {/* Market Data Download */}
           <Card className="group hover:shadow-xl transition-all duration-300 border-blue-200 hover:border-blue-400">
             <CardHeader className="pb-4">
@@ -182,6 +184,50 @@ export default function HomePage() {
               </Link>
             </CardContent>
           </Card>
+
+          {/* Military Spending Tracker */}
+          <Card className="group hover:shadow-xl transition-all duration-300 border-red-200 hover:border-red-400">
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between">
+                <div className="p-3 bg-red-100 rounded-lg group-hover:bg-red-200 transition-colors">
+                  <Shield className="h-8 w-8 text-red-600" />
+                </div>
+                <Badge variant="secondary" className="bg-red-50 text-red-700">
+                  Military
+                </Badge>
+              </div>
+              <CardTitle className="text-xl text-gray-900">
+                Military Spending Tracker
+              </CardTitle>
+              <CardDescription className="text-gray-600">
+                Track US foreign aid and military assistance worldwide with
+                detailed breakdowns
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="space-y-3 mb-6">
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+                  <span>US foreign aid tracking by country and year</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+                  <span>
+                    Military, economic, and humanitarian aid breakdown
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+                  <span>Historical data and current year estimates</span>
+                </div>
+              </div>
+              <Link href="/military-spending">
+                <Button className="w-full bg-red-600 hover:bg-red-700 text-white">
+                  Track Military Aid
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Feature Statistics */}
@@ -208,11 +254,11 @@ export default function HomePage() {
             <div className="text-sm text-gray-600">Economic Indicators</div>
           </div>
           <div className="text-center">
-            <div className="flex items-center justify-center w-12 h-12 bg-orange-100 rounded-lg mx-auto mb-3">
-              <Building2 className="h-6 w-6 text-orange-600" />
+            <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-lg mx-auto mb-3">
+              <Globe className="h-6 w-6 text-red-600" />
             </div>
-            <div className="text-2xl font-bold text-gray-900">5+</div>
-            <div className="text-sm text-gray-600">Countries</div>
+            <div className="text-2xl font-bold text-gray-900">10+</div>
+            <div className="text-sm text-gray-600">Countries Tracked</div>
           </div>
         </div>
 
