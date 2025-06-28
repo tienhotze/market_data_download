@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "dev": "next dev",
+    "dev": "next dev -p 3000",
     "lint": "next lint",
     "start": "next start"
   },
@@ -13,17 +13,23 @@
     "@radix-ui/react-collapsible": "latest",
     "@radix-ui/react-dialog": "latest",
     "@radix-ui/react-label": "latest",
+    "@radix-ui/react-popover": "^1.1.14",
     "@radix-ui/react-progress": "latest",
     "@radix-ui/react-select": "latest",
     "@radix-ui/react-slot": "latest",
     "@radix-ui/react-tabs": "latest",
-    "@radix-ui/react-toast": "latest",
+    "@radix-ui/react-toast": "^1.1.5",
+    "@tanstack/react-table": "^8.17.3",
     "@types/plotly.js": "^2.12.29",
-    "class-variance-authority": "^0.7.1",
+    "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.454.0",
-    "next": "14.2.16",
-    "next-themes": "latest",
+    "cmdk": "^1.1.1",
+    "date-fns": "^3.6.0",
+    "dotenv": "^16.5.0",
+    "html-to-image": "^1.11.11",
+    "lucide-react": "^0.379.0",
+    "next": "^14.2.30",
+    "next-themes": "^0.3.0",
     "pg": "^8.16.2",
     "plotly.js": "^2.27.0",
     "react": "^18",
@@ -34,15 +40,17 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
-    "@types/node": "^22",
+    "@types/node": "^22.15.32",
     "@types/pg": "^8.15.4",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@types/react-plotly.js": "^2.6.3",
     "autoprefixer": "^10.0.1",
     "eslint": "^8",
     "eslint-config-next": "14.0.0",
     "postcss": "^8.5",
     "tailwindcss": "^3.3.0",
-    "typescript": "^5"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
   }
 }

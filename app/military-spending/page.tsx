@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -17,6 +17,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TableFooter,
 } from "@/components/ui/table";
 import {
   TrendingUp,
@@ -25,7 +26,11 @@ import {
   Shield,
   Calendar,
   BarChart3,
+  Copy,
 } from "lucide-react";
+import { copyImageToClipboard } from "@/lib/utils";
+import { useToast } from "@/components/ui/use-toast";
+import { Navigation } from "@/components/navigation";
 
 interface AidData {
   year: number;
@@ -58,6 +63,20 @@ export default function MilitarySpendingPage() {
   const [summary, setSummary] = useState<AidSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
+
+  const handleCopyImage = async () => {
+    if (tableRef.current) {
+      const success = await copyImageToClipboard(tableRef.current);
+      toast({
+        title: success ? "Image Copied!" : "Copy Failed",
+        description: success
+          ? "The table has been copied to your clipboard as an image."
+          : "Could not copy the table. Please try again.",
+      });
+    }
+  };
 
   useEffect(() => {
     const fetchAidData = async () => {
@@ -160,6 +179,7 @@ export default function MilitarySpendingPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100">
+      <Navigation title="US Military Spending Tracker" />
       <div className="max-w-7xl mx-auto p-6">
         {/* Header */}
         <div className="text-center mb-12">
@@ -323,62 +343,99 @@ export default function MilitarySpendingPage() {
         </Card>
 
         {/* Data Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5 text-gray-600" />
-              Annual Aid Breakdown ({summary?.yearRange || "2015-2025"})
-            </CardTitle>
-            <CardDescription>
-              Detailed breakdown of US aid to Israel by category and year (
-              {summary?.dataPoints || 0} data points)
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Year</TableHead>
-                    <TableHead className="text-right">
-                      Military Aid (B$)
-                    </TableHead>
-                    <TableHead className="text-right">
-                      Economic Aid (B$)
-                    </TableHead>
-                    <TableHead className="text-right">
-                      Humanitarian Aid (B$)
-                    </TableHead>
-                    <TableHead className="text-right">Total (B$)</TableHead>
-                    <TableHead>Source</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {aidData.map((row) => (
-                    <TableRow key={row.year}>
-                      <TableCell className="font-medium">{row.year}</TableCell>
-                      <TableCell className="text-right text-red-600">
-                        {row.militaryAid.toFixed(1)}
-                      </TableCell>
-                      <TableCell className="text-right text-blue-600">
-                        {row.economicAid.toFixed(1)}
-                      </TableCell>
-                      <TableCell className="text-right text-green-600">
-                        {row.humanitarianAid.toFixed(1)}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {row.total.toFixed(1)}
-                      </TableCell>
-                      <TableCell className="text-sm text-gray-500">
-                        {row.source}
-                      </TableCell>
+        <div ref={tableRef} className="bg-white p-4 rounded-lg">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5 text-gray-600" />
+                  Annual Aid Breakdown ({summary?.yearRange || "2015-2025"})
+                </CardTitle>
+                <CardDescription>
+                  Detailed breakdown of US aid to Israel by category and year (
+                  {summary?.dataPoints || 0} data points)
+                </CardDescription>
+              </div>
+              <Button onClick={handleCopyImage} variant="outline" size="sm">
+                <Copy className="h-4 w-4 mr-2" />
+                Copy Image
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Year</TableHead>
+                      <TableHead className="text-right">
+                        Military Aid (B$)
+                      </TableHead>
+                      <TableHead className="text-right">
+                        Economic Aid (B$)
+                      </TableHead>
+                      <TableHead className="text-right">
+                        Humanitarian Aid (B$)
+                      </TableHead>
+                      <TableHead className="text-right">Total (B$)</TableHead>
+                      <TableHead>Source</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {aidData.map((row, index) => (
+                      <TableRow key={`${row.year}-${index}`} className="h-10">
+                        <TableCell className="font-medium py-1">
+                          {row.notes ? `${row.year}* Emergency Aid` : row.year}
+                        </TableCell>
+                        <TableCell className="text-right text-red-600 py-1">
+                          {row.militaryAid.toFixed(1)}
+                        </TableCell>
+                        <TableCell className="text-right text-blue-600 py-1">
+                          {row.economicAid.toFixed(1)}
+                        </TableCell>
+                        <TableCell className="text-right text-green-600 py-1">
+                          {row.humanitarianAid.toFixed(1)}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold py-1">
+                          {row.total.toFixed(1)}
+                        </TableCell>
+                        <TableCell className="text-sm text-gray-500 py-1">
+                          {row.source}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                  <TableFooter>
+                    <TableRow className="h-12">
+                      <TableCell className="font-bold py-2 text-base">
+                        10-Year Total
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-red-600 py-2 text-base">
+                        {summary?.totalMilitaryAid.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-blue-600 py-2 text-base">
+                        {summary?.totalEconomicAid.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-green-600 py-2 text-base">
+                        {summary?.totalHumanitarianAid.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="text-right font-extrabold py-2 text-base">
+                        {summary?.grandTotal.toFixed(1)}
+                      </TableCell>
+                      <TableCell />
+                    </TableRow>
+                  </TableFooter>
+                </Table>
+              </div>
+              <p className="text-xs text-gray-500 mt-4">
+                Source: Congressional Research Service, U.S. State Department,
+                and news reports. All figures are in billions of U.S. dollars
+                and may be approximate.
+                <br />* Emergency Aid for 2024 is a supplemental package, and
+                the value is an approximation based on multiple sources.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Disclaimer */}
         <Card className="mt-8 border-gray-200">

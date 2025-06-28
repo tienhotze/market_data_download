@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import pool from "@/lib/db"
+import { economicDataPool } from "@/lib/db"
 
 interface EconomicDataPoint {
   date: string
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
 
     query += ` ORDER BY date ASC`
 
-    const client = await pool.connect()
+    const client = await economicDataPool.connect()
     try {
       const result = await client.query(query, params)
 

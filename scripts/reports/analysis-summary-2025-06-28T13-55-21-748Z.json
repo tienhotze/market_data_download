@@ -1,0 +1,114 @@
+{
+  "timestamp": "2025-06-28T13:55:21.753Z",
+  "analysisPeriod": {
+    "start": "2023-06-29T13:55:21.410Z",
+    "end": "2025-06-28T13:55:21.753Z",
+    "days": 730
+  },
+  "currencies": [
+    "AUDJPY",
+    "AUDUSD",
+    "CADUSD",
+    "EURUSD",
+    "NZDUSD",
+    "USDCAD",
+    "USDCNH",
+    "USDJPY",
+    "USDMXN",
+    "USDNOK",
+    "USDSGD",
+    "USDTHB"
+  ],
+  "statistics": [
+    {
+      "symbol": "AUDJPY",
+      "dataPoints": 624,
+      "changes": 623,
+      "missingCount": 0,
+      "errorCount": 0
+    },
+    {
+      "symbol": "AUDUSD",
+      "dataPoints": 621,
+      "changes": 620,
+      "missingCount": 0,
+      "errorCount": 0
+    },
+    {
+      "symbol": "CADUSD",
+      "dataPoints": 0,
+      "changes": 0,
+      "missingCount": 0,
+      "errorCount": 0
+    },
+    {
+      "symbol": "EURUSD",
+      "dataPoints": 624,
+      "changes": 623,
+      "missingCount": 0,
+      "errorCount": 0
+    },
+    {
+      "symbol": "NZDUSD",
+      "dataPoints": 621,
+      "changes": 620,
+      "missingCount": 0,
+      "errorCount": 0
+    },
+    {
+      "symbol": "USDCAD",
+      "dataPoints": 624,
+      "changes": 623,
+      "missingCount": 0,
+      "errorCount": 0
+    },
+    {
+      "symbol": "USDCNH",
+      "dataPoints": 621,
+      "changes": 620,
+      "missingCount": 0,
+      "errorCount": 0
+    },
+    {
+      "symbol": "USDJPY",
+      "dataPoints": 622,
+      "changes": 621,
+      "missingCount": 0,
+      "errorCount": 0
+    },
+    {
+      "symbol": "USDMXN",
+      "dataPoints": 621,
+      "changes": 620,
+      "missingCount": 0,
+      "errorCount": 0
+    },
+    {
+      "symbol": "USDNOK",
+      "dataPoints": 624,
+      "changes": 623,
+      "missingCount": 0,
+      "errorCount": 0
+    },
+    {
+      "symbol": "USDSGD",
+      "dataPoints": 621,
+      "changes": 620,
+      "missingCount": 0,
+      "errorCount": 0
+    },
+    {
+      "symbol": "USDTHB",
+      "dataPoints": 622,
+      "changes": 621,
+      "missingCount": 0,
+      "errorCount": 0
+    }
+  ],
+  "totals": {
+    "missingData": 0,
+    "errorData": 0,
+    "matrixDates": 623,
+    "matrixCurrencies": 12
+  }
+}

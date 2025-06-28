@@ -19,6 +19,8 @@ import {
   Building2,
   Shield,
   Globe,
+  GitGraph,
+  Target,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -52,7 +54,7 @@ export default function HomePage() {
         </div>
 
         {/* Main Navigation Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
           {/* Market Data Download */}
           <Card className="group hover:shadow-xl transition-all duration-300 border-blue-200 hover:border-blue-400">
             <CardHeader className="pb-4">
@@ -224,6 +226,96 @@ export default function HomePage() {
               <Link href="/military-spending">
                 <Button className="w-full bg-red-600 hover:bg-red-700 text-white">
                   Track Military Aid
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          {/* Asset Analysis */}
+          <Card className="group hover:shadow-xl transition-all duration-300 border-yellow-200 hover:border-yellow-400">
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between">
+                <div className="p-3 bg-yellow-100 rounded-lg group-hover:bg-yellow-200 transition-colors">
+                  <GitGraph className="h-8 w-8 text-yellow-600" />
+                </div>
+                <Badge
+                  variant="secondary"
+                  className="bg-yellow-50 text-yellow-700"
+                >
+                  Analysis
+                </Badge>
+              </div>
+              <CardTitle className="text-xl text-gray-900">
+                Asset Analysis
+              </CardTitle>
+              <CardDescription className="text-gray-600">
+                Chart asset prices against economic data with custom
+                transformations.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="space-y-3 mb-6">
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+                  <span>Single and multi-asset charting</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+                  <span>Price and percentage change analysis</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+                  <span>Combine asset and economic data series</span>
+                </div>
+              </div>
+              <Link href="/asset-analysis">
+                <Button className="w-full bg-yellow-600 hover:bg-yellow-700 text-white">
+                  Analyze Assets
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          {/* Correlation Analysis */}
+          <Card className="group hover:shadow-xl transition-all duration-300 border-indigo-200 hover:border-indigo-400">
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between">
+                <div className="p-3 bg-indigo-100 rounded-lg group-hover:bg-indigo-200 transition-colors">
+                  <Target className="h-8 w-8 text-indigo-600" />
+                </div>
+                <Badge
+                  variant="secondary"
+                  className="bg-indigo-50 text-indigo-700"
+                >
+                  Correlation
+                </Badge>
+              </div>
+              <CardTitle className="text-xl text-gray-900">
+                Cross-Correlation & Beta Analysis
+              </CardTitle>
+              <CardDescription className="text-gray-600">
+                Analyze cross-correlations and betas between multiple assets
+                with interactive matrices.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="space-y-3 mb-6">
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="w-2 h-2 bg-indigo-400 rounded-full"></div>
+                  <span>Single and multi-asset charting</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="w-2 h-2 bg-indigo-400 rounded-full"></div>
+                  <span>Price and percentage change analysis</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="w-2 h-2 bg-indigo-400 rounded-full"></div>
+                  <span>Combine asset and economic data series</span>
+                </div>
+              </div>
+              <Link href="/correlation-analysis">
+                <Button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white">
+                  Open Correlation Analysis
                 </Button>
               </Link>
             </CardContent>

@@ -1,85 +1,179 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { SearchSection } from "@/components/search-section"
-import { DataTabs } from "@/components/data-tabs"
-import { QueryHistory } from "@/components/query-history"
-import { Disclaimer } from "@/components/disclaimer"
-import { Button } from "@/components/ui/button"
-import { TrendingUp, ArrowLeft } from "lucide-react"
-import Link from "next/link"
-import type { TickerData, NewsItem, ResearchItem } from "@/types"
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import {
+  Loader2,
+  ArrowLeft,
+  RefreshCw,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+} from "lucide-react";
+import { Navigation } from "@/components/navigation";
+import { useToast } from "@/hooks/use-toast";
+
+interface FileStatus {
+  file: string;
+  exists: boolean;
+  size: number;
+  lastModified: string;
+  dbStatus: {
+    asset_id: string;
+    table_name: string;
+    exists: boolean;
+    count: number;
+    min_date: string | null;
+    max_date: string | null;
+  };
+}
 
 export default function MarketDataPage() {
-  const router = useRouter()
-  const [selectedTicker, setSelectedTicker] = useState<TickerData | null>(null)
-  const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null)
-  const [selectedPeriod, setSelectedPeriod] = useState("1mo")
-  const [pricesData, setPricesData] = useState<any[]>([])
-  const [newsData, setNewsData] = useState<NewsItem[]>([])
-  const [researchData, setResearchData] = useState<ResearchItem[]>([])
-  const [loading, setLoading] = useState(false)
+  const router = useRouter();
+  const { toast } = useToast();
+  const [dataStatus, setDataStatus] = useState<FileStatus[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/check-repo-data");
+      if (!response.ok) {
+        throw new Error("Failed to fetch data status");
+      }
+      const data = await response.json();
+      setDataStatus(data.status);
+      setLastUpdated(new Date());
+      toast({
+        title: "Success",
+        description: "Data status updated.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Could not fetch data status.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-4 py-8">
-        <header className="text-center mb-8">
-          <div className="flex justify-center items-center gap-4 mb-4">
-            <Link href="/">
-              <Button variant="outline" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Home
-              </Button>
-            </Link>
-            <h1 className="text-4xl font-bold text-gray-900">Market Data Downloader</h1>
-            <Button
-              onClick={() => router.push("/event-analysis")}
-              variant="default"
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              <TrendingUp className="h-4 w-4" />
-              Event Analysis
+    <div>
+      <Navigation title="Market Data Status" />
+      <div className="p-4 sm:p-6 lg:p-8">
+        <div className="flex justify-between items-center mb-4">
+          <Button onClick={() => router.back()} variant="outline">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Back
+          </Button>
+          <div className="flex items-center gap-4">
+            {lastUpdated && (
+              <span className="text-sm text-gray-500">
+                Last updated: {lastUpdated.toLocaleTimeString()}
+              </span>
+            )}
+            <Button onClick={fetchData} disabled={loading}>
+              {loading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              Refresh
             </Button>
           </div>
-          <p className="text-lg text-gray-600">Search, preview and save market data to GitHub</p>
-        </header>
-
-        <div className="max-w-6xl mx-auto space-y-6">
-          <SearchSection
-            selectedTicker={selectedTicker}
-            setSelectedTicker={setSelectedTicker}
-            dateRange={dateRange}
-            setDateRange={setDateRange}
-            setPricesData={setPricesData}
-            setNewsData={setNewsData}
-            setResearchData={setResearchData}
-            loading={loading}
-            setLoading={setLoading}
-          />
-
-          {selectedTicker && (
-            <DataTabs
-              ticker={selectedTicker}
-              dateRange={dateRange}
-              pricesData={pricesData}
-              newsData={newsData}
-              researchData={researchData}
-              loading={loading}
-              period={selectedPeriod}
-            />
-          )}
-
-          <QueryHistory
-            onSelectQuery={(ticker, range) => {
-              setSelectedTicker(ticker)
-              setDateRange(range)
-            }}
-          />
-
-          <Disclaimer />
         </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Data Repository Status</CardTitle>
+            <CardDescription>
+              Overview of data files in the repository and their status in the
+              database.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading && !lastUpdated ? (
+              <div className="flex justify-center items-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Asset</TableHead>
+                    <TableHead>DB Table</TableHead>
+                    <TableHead className="text-center">Status</TableHead>
+                    <TableHead className="text-right">DB Records</TableHead>
+                    <TableHead>Date Range</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {dataStatus.map((status) => (
+                    <TableRow key={status.file}>
+                      <TableCell>
+                        <div className="font-medium">
+                          {status.dbStatus.asset_id}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {status.file}
+                        </div>
+                      </TableCell>
+                      <TableCell>{status.dbStatus.table_name}</TableCell>
+                      <TableCell className="text-center">
+                        {status.dbStatus.exists ? (
+                          <Badge
+                            variant="default"
+                            className="bg-green-500 hover:bg-green-600"
+                          >
+                            <CheckCircle className="mr-2 h-4 w-4" /> Loaded
+                          </Badge>
+                        ) : (
+                          <Badge variant="destructive">
+                            <XCircle className="mr-2 h-4 w-4" /> Missing
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {status.dbStatus.count.toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        {status.dbStatus.min_date &&
+                        status.dbStatus.max_date ? (
+                          `${status.dbStatus.min_date} to ${status.dbStatus.max_date}`
+                        ) : (
+                          <span className="text-gray-400">N/A</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
-  )
+  );
 }

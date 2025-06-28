@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+// import { fetchYahooFinanceV2 } from "@/lib/yahoo-finance-v2"
 
 interface RetryTracker {
   [ticker: string]: {
@@ -14,162 +15,111 @@ const MAX_RETRIES = 3
 const RETRY_COOLDOWN = 5 * 60 * 1000 // 5 minutes between retry cycles
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { tickers, period, extraData = false } = body
+  // Feature temporarily disabled as per user request.
+  return NextResponse.json(
+    {
+      message: "Direct download from Yahoo Finance is temporarily disabled.",
+      source: "feature-disabled",
+    },
+    { status: 200 }
+  )
 
-    if (!tickers || !Array.isArray(tickers) || tickers.length === 0) {
-      return NextResponse.json({ error: "No tickers provided" }, { status: 400 })
+  /*
+  // Original implementation is preserved below for future use.
+  
+  interface RetryTracker {
+    attempts: number;
+    lastAttempt: number;
+  }
+  
+  const yahooRetryTracker: Record<string, RetryTracker> = {};
+  const MAX_YAHOO_RETRIES = 3;
+  const YAHOO_COOLDOWN_PERIOD = 5 * 60 * 1000; // 5 minutes
+
+  try {
+    const body = await request.json();
+    const { ticker, period = "max", interval = "1d" } = body;
+
+    if (!ticker) {
+      return NextResponse.json({ error: "Ticker is required" }, { status: 400 });
     }
 
-    const ticker = tickers[0]
-    console.log(`Download request: ticker=${ticker}, period=${period}, extraData=${extraData}`)
-
-    // Convert period to timestamps (add extra month if requested for technical indicators)
-    const { startTimestamp, endTimestamp } = getPeriodTimestamps(period, extraData)
-
-    try {
-      // Check retry limits
-      const now = Date.now()
-      const tickerRetry = retryTracker[ticker] || { attempts: 0, lastAttempt: 0, failed: false }
-
-      // Reset attempts if cooldown period has passed
-      if (now - tickerRetry.lastAttempt > RETRY_COOLDOWN) {
-        tickerRetry.attempts = 0
-        tickerRetry.failed = false
-      }
-
-      // Check if we've exceeded max retries
-      if (tickerRetry.failed && tickerRetry.attempts >= MAX_RETRIES) {
-        console.log(`Ticker ${ticker} has exceeded maximum retry attempts (${MAX_RETRIES})`)
+    const retryInfo = yahooRetryTracker[ticker];
+    if (retryInfo && retryInfo.attempts >= MAX_YAHOO_RETRIES) {
+      const timeSinceLastAttempt = Date.now() - retryInfo.lastAttempt;
+      if (timeSinceLastAttempt < YAHOO_COOLDOWN_PERIOD) {
+        const nextRetryTime = new Date(retryInfo.lastAttempt + YAHOO_COOLDOWN_PERIOD);
         return NextResponse.json(
           {
-            error: `Data unavailable: ${ticker} has exceeded maximum retry attempts (${MAX_RETRIES}). Please try again later.`,
-            ticker,
-            period,
-            rows: 0,
-            source: "Retry limit exceeded",
+            error: `Yahoo API limit reached for ${ticker}.`,
             retryInfo: {
-              attempts: tickerRetry.attempts,
-              maxRetries: MAX_RETRIES,
-              nextRetryAvailable: new Date(tickerRetry.lastAttempt + RETRY_COOLDOWN).toISOString(),
+              attempts: retryInfo.attempts,
+              maxRetries: MAX_YAHOO_RETRIES,
+              nextRetryAvailable: nextRetryTime.toISOString(),
             },
+            source: "yahoo-throttled",
           },
-          { status: 429 },
-        )
+          { status: 429 }
+        );
+      } else {
+        delete yahooRetryTracker[ticker];
+      }
+    }
+
+    try {
+      // Using approach 2 as it seems more robust
+      const data = await fetchYahooFinanceV2(ticker, period, interval);
+      
+      if (yahooRetryTracker[ticker]) {
+        delete yahooRetryTracker[ticker];
       }
 
-      // Update retry tracker
-      retryTracker[ticker] = {
-        attempts: tickerRetry.attempts + 1,
-        lastAttempt: now,
-        failed: false,
-      }
+      return NextResponse.json({
+        data,
+        source: "yahoo-finance-v2",
+        ticker,
+        dataPoints: data.length,
+      });
 
-      // Try multiple approaches to fetch data
-      let yahooData = null
-      let dataSource = "Unknown"
-      let lastError = null
-
-      // Approach 1: Try Yahoo Finance with better headers
-      try {
-        console.log(
-          `Trying Yahoo Finance approach 1 for ${ticker} (attempt ${retryTracker[ticker].attempts}/${MAX_RETRIES})...`,
-        )
-        yahooData = await fetchYahooFinanceV1(ticker, startTimestamp, endTimestamp)
-        dataSource = "Yahoo Finance V1"
-      } catch (error) {
-        console.log("Yahoo Finance V1 failed:", error)
-        lastError = error
-      }
-
-      // Approach 2: Try alternative Yahoo Finance endpoint
-      if (!yahooData || yahooData.length === 0) {
-        try {
-          console.log(
-            `Trying Yahoo Finance approach 2 for ${ticker} (attempt ${retryTracker[ticker].attempts}/${MAX_RETRIES})...`,
-          )
-          yahooData = await fetchYahooFinanceV2(ticker, startTimestamp, endTimestamp)
-          dataSource = "Yahoo Finance V2"
-        } catch (error) {
-          console.log("Yahoo Finance V2 failed:", error)
-          lastError = error
-        }
-      }
-
-      // Approach 3: Try Alpha Vantage (free tier)
-      if (!yahooData || yahooData.length === 0) {
-        try {
-          console.log(`Trying Alpha Vantage for ${ticker} (attempt ${retryTracker[ticker].attempts}/${MAX_RETRIES})...`)
-          yahooData = await fetchAlphaVantageData(ticker, period, extraData)
-          dataSource = "Alpha Vantage"
-        } catch (error) {
-          console.log("Alpha Vantage failed:", error)
-          lastError = error
-        }
-      }
-
-      // If successful, reset retry tracker
-      if (yahooData && yahooData.length > 0) {
-        retryTracker[ticker] = { attempts: 0, lastAttempt: 0, failed: false }
-        console.log(`Successfully fetched ${yahooData.length} data points for ${ticker} from ${dataSource}`)
-
-        return NextResponse.json({
-          data: yahooData,
-          ticker,
-          period,
-          rows: yahooData.length,
-          source: dataSource,
-          extraData,
-          warning: dataSource.includes("Mock") ? "Using mock data due to API limitations" : undefined,
-        })
-      }
-
-      // Mark as failed if we've reached max retries
-      if (retryTracker[ticker].attempts >= MAX_RETRIES) {
-        retryTracker[ticker].failed = true
-      }
-
-      // Return error with retry information
-      const remainingAttempts = MAX_RETRIES - retryTracker[ticker].attempts
-      throw new Error(
-        `All data sources failed for ${ticker}. ${remainingAttempts > 0 ? `${remainingAttempts} attempts remaining.` : "Maximum attempts reached."} Last error: ${lastError instanceof Error ? lastError.message : "Unknown error"}`,
-      )
     } catch (fetchError) {
-      console.error(
-        `Fetch failed for ${ticker} (attempt ${retryTracker[ticker]?.attempts || 0}/${MAX_RETRIES}):`,
-        fetchError,
-      )
+      if (!yahooRetryTracker[ticker]) {
+        yahooRetryTracker[ticker] = { attempts: 0, lastAttempt: 0 };
+      }
+      yahooRetryTracker[ticker].attempts += 1;
+      yahooRetryTracker[ticker].lastAttempt = Date.now();
+      
+      const errorMessage = fetchError instanceof Error ? fetchError.message : "Unknown Yahoo API error";
 
-      // Return error with retry information
-      const tickerRetry = retryTracker[ticker] || { attempts: 0, lastAttempt: 0, failed: false }
-      const remainingAttempts = MAX_RETRIES - tickerRetry.attempts
+      if (yahooRetryTracker[ticker].attempts >= MAX_YAHOO_RETRIES) {
+        return NextResponse.json(
+          {
+            error: `Yahoo API limit reached after ${MAX_YAHOO_RETRIES} attempts.`,
+            lastError: errorMessage,
+            source: "yahoo-failed",
+          },
+          { status: 429 }
+        );
+      }
 
       return NextResponse.json(
         {
-          error: `Download failed: ${fetchError instanceof Error ? fetchError.message : "Unknown error"}`,
-          ticker,
-          period,
-          rows: 0,
-          source: "No data available",
+          error: errorMessage,
           retryInfo: {
-            attempts: tickerRetry.attempts,
-            maxRetries: MAX_RETRIES,
-            remainingAttempts,
-            nextRetryAvailable:
-              remainingAttempts <= 0 ? new Date(tickerRetry.lastAttempt + RETRY_COOLDOWN).toISOString() : null,
+            attempts: yahooRetryTracker[ticker].attempts,
+            remaining: MAX_YAHOO_RETRIES - yahooRetryTracker[ticker].attempts,
           },
+          source: "yahoo-retry",
         },
-        { status: remainingAttempts <= 0 ? 429 : 400 },
-      )
+        { status: 500 }
+      );
     }
   } catch (error) {
-    console.error("Download API error:", error)
     return NextResponse.json(
-      { error: `Download failed: ${error instanceof Error ? error.message : "Unknown error"}` },
-      { status: 400 },
-    )
+      { error: "Failed to process download request", details: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
   }
+  */
 }
 
 function getPeriodTimestamps(period: string, extraData = false) {

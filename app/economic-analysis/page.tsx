@@ -16,6 +16,7 @@ import { ArrowLeft, Download, Calendar, BarChart3 } from "lucide-react";
 import Link from "next/link";
 import { EconomicChart } from "@/components/economic-chart";
 import { useToast } from "@/hooks/use-toast";
+import { Navigation } from "@/components/navigation";
 
 interface EconomicDataPoint {
   date: string;
@@ -133,17 +134,12 @@ export default function EconomicAnalysisPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/">
-              <Button variant="outline" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Home
-              </Button>
-            </Link>
+    <div className="min-h-screen bg-gray-50">
+      <Navigation title="Economic Data Analysis" />
+      <div className="p-4">
+        <div className="max-w-7xl mx-auto space-y-6">
+          {/* Header */}
+          <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">
                 Economic Data Analysis
@@ -153,172 +149,172 @@ export default function EconomicAnalysisPage() {
                 projections
               </p>
             </div>
+            <Badge variant="secondary" className="text-sm">
+              <Calendar className="h-4 w-4 mr-1" />
+              United States
+            </Badge>
           </div>
-          <Badge variant="secondary" className="text-sm">
-            <Calendar className="h-4 w-4 mr-1" />
-            United States
-          </Badge>
-        </div>
 
-        {/* Controls */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
-              Data Selection & Options
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Economic Indicator
-                </label>
-                <Select
-                  value={selectedSeries}
-                  onValueChange={setSelectedSeries}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(AVAILABLE_SERIES).map(([key, info]) => (
-                      <SelectItem key={key} value={key}>
-                        {info.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Projection Period
-                </label>
-                <Select
-                  value={projectionMonths.toString()}
-                  onValueChange={(value) =>
-                    setProjectionMonths(Number.parseInt(value))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="3">3 months</SelectItem>
-                    <SelectItem value="6">6 months</SelectItem>
-                    <SelectItem value="12">12 months</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Moving Averages
-                </label>
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="ma3"
-                      checked={showMovingAverages.ma3}
-                      onCheckedChange={(checked) =>
-                        setShowMovingAverages((prev) => ({
-                          ...prev,
-                          ma3: !!checked,
-                        }))
-                      }
-                    />
-                    <label htmlFor="ma3" className="text-sm">
-                      3 months
-                    </label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="ma6"
-                      checked={showMovingAverages.ma6}
-                      onCheckedChange={(checked) =>
-                        setShowMovingAverages((prev) => ({
-                          ...prev,
-                          ma6: !!checked,
-                        }))
-                      }
-                    />
-                    <label htmlFor="ma6" className="text-sm">
-                      6 months
-                    </label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="ma12"
-                      checked={showMovingAverages.ma12}
-                      onCheckedChange={(checked) =>
-                        setShowMovingAverages((prev) => ({
-                          ...prev,
-                          ma12: !!checked,
-                        }))
-                      }
-                    />
-                    <label htmlFor="ma12" className="text-sm">
-                      12 months
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Options
-                </label>
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="projections"
-                      checked={showProjections}
-                      onCheckedChange={(checked) =>
-                        setShowProjections(!!checked)
-                      }
-                    />
-                    <label htmlFor="projections" className="text-sm">
-                      Show Projections
-                    </label>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleExportData}
-                    disabled={!economicData}
-                    className="w-full"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Export CSV
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Chart and Data */}
-        {economicData && (
-          <EconomicChart
-            data={economicData}
-            showMovingAverages={showMovingAverages}
-            showProjections={showProjections}
-            projectionMonths={projectionMonths}
-            loading={loading}
-          />
-        )}
-
-        {loading && (
+          {/* Controls */}
           <Card>
-            <CardContent className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p className="text-gray-600">Loading economic data...</p>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Data Selection & Options
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <label className="text-sm font-medium mb-2 block">
+                    Economic Indicator
+                  </label>
+                  <Select
+                    value={selectedSeries}
+                    onValueChange={setSelectedSeries}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(AVAILABLE_SERIES).map(([key, info]) => (
+                        <SelectItem key={key} value={key}>
+                          {info.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-2 block">
+                    Projection Period
+                  </label>
+                  <Select
+                    value={projectionMonths.toString()}
+                    onValueChange={(value) =>
+                      setProjectionMonths(Number.parseInt(value))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="3">3 months</SelectItem>
+                      <SelectItem value="6">6 months</SelectItem>
+                      <SelectItem value="12">12 months</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-2 block">
+                    Moving Averages
+                  </label>
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="ma3"
+                        checked={showMovingAverages.ma3}
+                        onCheckedChange={(checked) =>
+                          setShowMovingAverages((prev) => ({
+                            ...prev,
+                            ma3: !!checked,
+                          }))
+                        }
+                      />
+                      <label htmlFor="ma3" className="text-sm">
+                        3 months
+                      </label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="ma6"
+                        checked={showMovingAverages.ma6}
+                        onCheckedChange={(checked) =>
+                          setShowMovingAverages((prev) => ({
+                            ...prev,
+                            ma6: !!checked,
+                          }))
+                        }
+                      />
+                      <label htmlFor="ma6" className="text-sm">
+                        6 months
+                      </label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="ma12"
+                        checked={showMovingAverages.ma12}
+                        onCheckedChange={(checked) =>
+                          setShowMovingAverages((prev) => ({
+                            ...prev,
+                            ma12: !!checked,
+                          }))
+                        }
+                      />
+                      <label htmlFor="ma12" className="text-sm">
+                        12 months
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-2 block">
+                    Options
+                  </label>
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="projections"
+                        checked={showProjections}
+                        onCheckedChange={(checked) =>
+                          setShowProjections(!!checked)
+                        }
+                      />
+                      <label htmlFor="projections" className="text-sm">
+                        Show Projections
+                      </label>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExportData}
+                      disabled={!economicData}
+                      className="w-full"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Export CSV
+                    </Button>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
-        )}
+
+          {/* Chart and Data */}
+          {economicData && (
+            <EconomicChart
+              data={economicData}
+              showMovingAverages={showMovingAverages}
+              showProjections={showProjections}
+              projectionMonths={projectionMonths}
+              loading={loading}
+            />
+          )}
+
+          {loading && (
+            <Card>
+              <CardContent className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading economic data...</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </div>
     </div>
   );

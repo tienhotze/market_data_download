@@ -1,27 +1,114 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { economicDataPool, assetPricesPool } from "@/lib/db"
+import { promises as fs } from "fs"
+import path from "path"
+import { PoolClient } from "pg"
 
 // GitHub API retry tracking
 const githubRetryTracker: Record<string, { attempts: number; lastAttempt: number }> = {}
 const MAX_GITHUB_RETRIES = 3
 const GITHUB_COOLDOWN_PERIOD = 5 * 60 * 1000 // 5 minutes
 
-export async function POST(request: NextRequest) {
-  try {
-    const { ticker, startDate, endDate } = await request.json()
+const DATA_DIR = path.join(process.cwd(), "data")
 
-    if (!ticker) {
-      return NextResponse.json({ error: "Ticker is required" }, { status: 400 })
+const ASSETS_TO_CHECK = [
+  { ticker: "^GSPC", name: "S&P 500", tableName: "price_spx" },
+  { ticker: "CL=F", name: "WTI Crude Oil", tableName: "price_wti" },
+  { ticker: "GC=F", name: "Gold", tableName: "price_gold" },
+  { ticker: "DX-Y.NYB", name: "Dollar Index", tableName: "price_dxy" },
+  { ticker: "^TNX", name: "10Y Treasury Yield", tableName: "price_tnx" },
+  { ticker: "^VIX", name: "VIX", tableName: "price_vix" },
+]
+
+interface FileStatus {
+  file: string
+  exists: boolean
+  size: number
+  lastModified: string
+  dbStatus: {
+    asset_id: string
+    table_name: string
+    exists: boolean
+    count: number
+    min_date: string | null
+    max_date: string | null
+  }
+}
+
+async function checkTableStatus(client: PoolClient, tableName: string) {
+  try {
+    // Check if table exists
+    const tableExistsResult = await client.query(
+      `SELECT to_regclass($1) as "exists"`,
+      [`public.${tableName}`]
+    )
+    const tableExists = tableExistsResult.rows[0].exists !== null
+
+    if (!tableExists) {
+      return {
+        exists: false,
+        count: 0,
+        min_date: null,
+        max_date: null,
+      }
     }
 
-    console.log(`GitHub repo check request for ticker ${ticker}`)
+    // If table exists, get count and date range
+    const statsResult = await client.query(
+      `SELECT 
+         COUNT(*) as "count", 
+         MIN(timestamp) as "min_date", 
+         MAX(timestamp) as "max_date" 
+       FROM ${tableName}`
+    )
 
-    // Check if ticker has exceeded GitHub retry limit
-    const retryInfo = githubRetryTracker[ticker]
+    const { count, min_date, max_date } = statsResult.rows[0]
+
+    return {
+      exists: true,
+      count: parseInt(count, 10),
+      min_date: min_date ? new Date(min_date).toISOString().split("T")[0] : null,
+      max_date: max_date ? new Date(max_date).toISOString().split("T")[0] : null,
+    }
+  } catch (error) {
+    console.error(`Error checking table ${tableName}:`, error)
+    // On any error, assume the table check failed
+    return {
+      exists: false,
+      count: 0,
+      min_date: null,
+      max_date: null,
+    }
+  }
+}
+
+export async function POST(request: NextRequest) {
+  // This feature is temporarily disabled to ensure all data comes from PostgreSQL.
+  return NextResponse.json(
+    {
+      message: "Checking GitHub repository is temporarily disabled.",
+      source: "feature-disabled",
+    },
+    { status: 200 }
+  );
+
+  /*
+  // Original implementation is preserved below for future use.
+  try {
+    const { ticker, startDate, endDate } = await request.json();
+
+    if (!ticker) {
+      return NextResponse.json({ error: "Ticker is required" }, { status: 400 });
+    }
+
+    console.log(`GitHub repo check request for ticker ${ticker}`);
+
+    const retryInfo = githubRetryTracker[ticker];
     if (retryInfo && retryInfo.attempts >= MAX_GITHUB_RETRIES) {
-      const timeSinceLastAttempt = Date.now() - retryInfo.lastAttempt
+      const timeSinceLastAttempt = Date.now() - retryInfo.lastAttempt;
       if (timeSinceLastAttempt < GITHUB_COOLDOWN_PERIOD) {
-        const nextRetryTime = new Date(retryInfo.lastAttempt + GITHUB_COOLDOWN_PERIOD)
-        console.log(`GitHub API limit reached for ${ticker}. Next retry available at: ${nextRetryTime}`)
+        const nextRetryTime = new Date(retryInfo.lastAttempt + GITHUB_COOLDOWN_PERIOD);
+        console.log(`GitHub API limit reached for ${ticker}. Next retry available at: ${nextRetryTime}`);
 
         return NextResponse.json(
           {
@@ -35,50 +122,45 @@ export async function POST(request: NextRequest) {
             source: "github-throttled",
           },
           { status: 429 },
-        )
+        );
       } else {
-        // Reset retry counter after cooldown
-        delete githubRetryTracker[ticker]
-        console.log(`GitHub retry cooldown expired for ${ticker}, resetting counter`)
+        delete githubRetryTracker[ticker];
+        console.log(`GitHub retry cooldown expired for ${ticker}, resetting counter`);
       }
     }
 
-    // Initialize or increment retry counter
     if (!githubRetryTracker[ticker]) {
-      githubRetryTracker[ticker] = { attempts: 0, lastAttempt: 0 }
+      githubRetryTracker[ticker] = { attempts: 0, lastAttempt: 0 };
     }
 
     try {
-      const data = await checkGitHubRepo(ticker, startDate, endDate)
+      const data = await checkGitHubRepo(ticker, startDate, endDate);
 
-      // Success - reset retry counter
       if (githubRetryTracker[ticker]) {
-        delete githubRetryTracker[ticker]
+        delete githubRetryTracker[ticker];
       }
 
-      console.log(`GitHub repo check successful for ${ticker}: ${data.length} data points`)
+      console.log(`GitHub repo check successful for ${ticker}: ${data.length} data points`);
 
       return NextResponse.json({
         data,
         source: "github",
         ticker,
         dataPoints: data.length,
-      })
+      });
     } catch (error) {
-      // Increment retry counter
-      githubRetryTracker[ticker].attempts += 1
-      githubRetryTracker[ticker].lastAttempt = Date.now()
+      githubRetryTracker[ticker].attempts += 1;
+      githubRetryTracker[ticker].lastAttempt = Date.now();
 
-      const errorMessage = error instanceof Error ? error.message : "Unknown GitHub API error"
+      const errorMessage = error instanceof Error ? error.message : "Unknown GitHub API error";
       console.error(
         `GitHub API attempt ${githubRetryTracker[ticker].attempts}/${MAX_GITHUB_RETRIES} failed for ${ticker}:`,
         errorMessage,
-      )
+      );
 
-      // Check if we've reached the limit
       if (githubRetryTracker[ticker].attempts >= MAX_GITHUB_RETRIES) {
-        const nextRetryTime = new Date(Date.now() + GITHUB_COOLDOWN_PERIOD)
-        console.log(`GitHub API limit reached for ${ticker} after ${MAX_GITHUB_RETRIES} attempts`)
+        const nextRetryTime = new Date(Date.now() + GITHUB_COOLDOWN_PERIOD);
+        console.log(`GitHub API limit reached for ${ticker} after ${MAX_GITHUB_RETRIES} attempts`);
 
         return NextResponse.json(
           {
@@ -93,10 +175,9 @@ export async function POST(request: NextRequest) {
             lastError: errorMessage,
           },
           { status: 429 },
-        )
+        );
       }
 
-      // Still have retries left
       return NextResponse.json(
         {
           error: errorMessage,
@@ -108,17 +189,18 @@ export async function POST(request: NextRequest) {
           source: "github-retry",
         },
         { status: 500 },
-      )
+      );
     }
   } catch (error) {
-    console.error("GitHub repo check API error:", error)
+    console.error("GitHub repo check API error:", error);
     return NextResponse.json(
       {
         error: `Failed to check GitHub repo: ${error instanceof Error ? error.message : "Unknown error"}`,
       },
       { status: 500 },
-    )
+    );
   }
+  */
 }
 
 async function checkGitHubRepo(ticker: string, startDate?: string, endDate?: string) {
@@ -252,5 +334,62 @@ function parseCSVData(csvText: string) {
   } catch (error) {
     console.error("Error parsing CSV data:", error)
     return []
+  }
+}
+
+export async function GET(request: NextRequest) {
+  let client: PoolClient | null = null
+  try {
+    client = await assetPricesPool.connect()
+
+    // Log the assets from the database
+    const assetsResult = await client.query('SELECT ticker, name FROM assets ORDER BY name')
+    console.log("Assets from DB:", assetsResult.rows)
+
+    const statusPromises = ASSETS_TO_CHECK.map(async (asset) => {
+      const fileName = `${asset.ticker}_OHLCV_D.csv`
+      const filePath = path.join(DATA_DIR, asset.ticker, fileName)
+      let fileStats
+      let fileExists = false
+
+      try {
+        fileStats = await fs.stat(filePath)
+        fileExists = true
+      } catch (e) {
+        // File does not exist
+      }
+
+      const dbStatus = await checkTableStatus(client as PoolClient, asset.tableName)
+
+      return {
+        file: path.join(asset.ticker, fileName),
+        exists: fileExists,
+        size: fileExists ? fileStats!.size : 0,
+        lastModified: fileExists ? fileStats!.mtime.toISOString() : "N/A",
+        dbStatus: {
+          asset_id: asset.name,
+          table_name: asset.tableName,
+          ...dbStatus,
+        },
+      }
+    })
+
+    const statusResults = await Promise.all(statusPromises)
+
+    return NextResponse.json({ status: statusResults })
+  } catch (error) {
+    console.error("Failed to check repository data:", error)
+    return NextResponse.json(
+      { 
+        error: "Failed to check repository data", 
+        details: error instanceof Error ? error.message : String(error),
+        status: [] // Always return an empty array on error
+      },
+      { status: 500 }
+    )
+  } finally {
+    if (client) {
+      client.release()
+    }
   }
 }

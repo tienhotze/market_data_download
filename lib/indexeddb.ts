@@ -514,388 +514,103 @@ class EventDataDB {
     })
   }
 
-  // Asset failure tracking methods
-  async storeGithubFailure(
-    assetName: string,
-    ticker: string,
-    attempts: number,
-    lastError: string,
-    nextRetryAvailable: string | null = null,
-  ): Promise<void> {
-    if (!this.db) await this.init()
-
-    return new Promise(async (resolve, reject) => {
-      const transaction = this.db!.transaction(["assetFailures"], "readwrite")
-      const store = transaction.objectStore("assetFailures")
-
-      // Get existing failure info or create new
-      const existingRequest = store.get(assetName)
-      existingRequest.onsuccess = () => {
-        const existing = existingRequest.result || {
-          assetName,
-          ticker,
-          yahooAttempts: 0,
-          githubAttempts: 0,
-          lastYahooAttempt: 0,
-          lastGithubAttempt: 0,
-          yahooFailed: false,
-          githubFailed: false,
-          lastYahooError: "",
-          lastGithubError: "",
-          nextYahooRetryAvailable: null,
-          nextGithubRetryAvailable: null,
-        }
-
-        const failureInfo: AssetFailureInfo = {
-          ...existing,
-          githubAttempts: attempts,
-          lastGithubAttempt: Date.now(),
-          githubFailed: attempts >= 3,
-          lastGithubError: lastError,
-          nextGithubRetryAvailable: nextRetryAvailable,
-        }
-
-        const putRequest = store.put(failureInfo)
-        putRequest.onerror = () => reject(putRequest.error)
-        putRequest.onsuccess = () => resolve()
-      }
-      existingRequest.onerror = () => reject(existingRequest.error)
-    })
-  }
-
-  async storeYahooFailure(
-    assetName: string,
-    ticker: string,
-    attempts: number,
-    lastError: string,
-    nextRetryAvailable: string | null = null,
-  ): Promise<void> {
-    if (!this.db) await this.init()
-
-    return new Promise(async (resolve, reject) => {
-      const transaction = this.db!.transaction(["assetFailures"], "readwrite")
-      const store = transaction.objectStore("assetFailures")
-
-      // Get existing failure info or create new
-      const existingRequest = store.get(assetName)
-      existingRequest.onsuccess = () => {
-        const existing = existingRequest.result || {
-          assetName,
-          ticker,
-          yahooAttempts: 0,
-          githubAttempts: 0,
-          lastYahooAttempt: 0,
-          lastGithubAttempt: 0,
-          yahooFailed: false,
-          githubFailed: false,
-          lastYahooError: "",
-          lastGithubError: "",
-          nextYahooRetryAvailable: null,
-          nextGithubRetryAvailable: null,
-        }
-
-        const failureInfo: AssetFailureInfo = {
-          ...existing,
-          yahooAttempts: attempts,
-          lastYahooAttempt: Date.now(),
-          yahooFailed: attempts >= 3,
-          lastYahooError: lastError,
-          nextYahooRetryAvailable: nextRetryAvailable,
-        }
-
-        const putRequest = store.put(failureInfo)
-        putRequest.onerror = () => reject(putRequest.error)
-        putRequest.onsuccess = () => resolve()
-      }
-      existingRequest.onerror = () => reject(existingRequest.error)
-    })
-  }
-
-  async storeAssetFailure(
-    assetName: string,
-    ticker: string,
-    attempts: number,
-    lastError: string,
-    nextRetryAvailable: string | null = null,
-  ): Promise<void> {
-    // This method is deprecated, use storeYahooFailure or storeGithubFailure instead
-    return this.storeYahooFailure(assetName, ticker, attempts, lastError, nextRetryAvailable)
-  }
-
-  async getAssetFailure(assetName: string): Promise<AssetFailureInfo | null> {
-    if (!this.db) await this.init()
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(["assetFailures"], "readonly")
-      const store = transaction.objectStore("assetFailures")
-      const request = store.get(assetName)
-
-      request.onerror = () => reject(request.error)
-      request.onsuccess = () => {
-        resolve(request.result || null)
-      }
-    })
-  }
-
-  async clearAssetFailure(assetName: string): Promise<void> {
-    if (!this.db) await this.init()
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(["assetFailures"], "readwrite")
-      const store = transaction.objectStore("assetFailures")
-      const request = store.delete(assetName)
-
-      request.onerror = () => reject(request.error)
-      request.onsuccess = () => resolve()
-    })
-  }
-
-  async getAllAssetFailures(): Promise<Record<string, AssetFailureInfo>> {
-    if (!this.db) await this.init()
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(["assetFailures"], "readonly")
-      const store = transaction.objectStore("assetFailures")
-      const request = store.getAll()
-
-      request.onerror = () => reject(request.error)
-      request.onsuccess = () => {
-        const results = request.result
-        const failures: Record<string, AssetFailureInfo> = {}
-
-        results.forEach((result) => {
-          failures[result.assetName] = result
-        })
-
-        resolve(failures)
-      }
-    })
-  }
-
   async getStorageStats(): Promise<{
     assetDataCount: number
     eventDataCount: number
     bulkDataCount: number
-    failureCount: number
   }> {
     if (!this.db) await this.init()
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(
-        ["assetPriceData", "eventData", "bulkEventData", "assetFailures"],
-        "readonly",
-      )
-
       let assetDataCount = 0
       let eventDataCount = 0
       let bulkDataCount = 0
-      let failureCount = 0
-      let completed = 0
+      let storesChecked = 0
+      const totalStores = 3
+
+      const transaction = this.db!.transaction(["assetPriceData", "eventData", "bulkEventData"], "readonly")
 
       const checkComplete = () => {
-        completed++
-        if (completed === 4) {
-          resolve({ assetDataCount, eventDataCount, bulkDataCount, failureCount })
+        storesChecked++
+        if (storesChecked === totalStores) {
+          resolve({ assetDataCount, eventDataCount, bulkDataCount })
         }
       }
 
-      // Count asset price data
       const assetStore = transaction.objectStore("assetPriceData")
-      const assetCountRequest = assetStore.count()
-      assetCountRequest.onsuccess = () => {
-        assetDataCount = assetCountRequest.result
+      const assetRequest = assetStore.count()
+      assetRequest.onerror = () => {
         checkComplete()
       }
-      assetCountRequest.onerror = () => reject(assetCountRequest.error)
+      assetRequest.onsuccess = () => {
+        assetDataCount = assetRequest.result
+        checkComplete()
+      }
 
-      // Count event data
       const eventStore = transaction.objectStore("eventData")
-      const eventCountRequest = eventStore.count()
-      eventCountRequest.onsuccess = () => {
-        eventDataCount = eventCountRequest.result
+      const eventRequest = eventStore.count()
+      eventRequest.onerror = () => {
         checkComplete()
       }
-      eventCountRequest.onerror = () => reject(eventCountRequest.error)
+      eventRequest.onsuccess = () => {
+        eventDataCount = eventRequest.result
+        checkComplete()
+      }
 
-      // Count bulk data
       const bulkStore = transaction.objectStore("bulkEventData")
-      const bulkCountRequest = bulkStore.count()
-      bulkCountRequest.onsuccess = () => {
-        bulkDataCount = bulkCountRequest.result
+      const bulkRequest = bulkStore.count()
+      bulkRequest.onerror = () => {
         checkComplete()
       }
-      bulkCountRequest.onerror = () => reject(bulkCountRequest.error)
-
-      // Count failures
-      const failureStore = transaction.objectStore("assetFailures")
-      const failureCountRequest = failureStore.count()
-      failureCountRequest.onsuccess = () => {
-        failureCount = failureCountRequest.result
+      bulkRequest.onsuccess = () => {
+        bulkDataCount = bulkRequest.result
         checkComplete()
       }
-      failureCountRequest.onerror = () => reject(failureCountRequest.error)
     })
   }
 }
 
-// Export singleton instance
 export const eventDataDB = new EventDataDB()
 
-// Utility functions
-export const ASSET_TICKERS = {
-  "S&P 500": "^GSPC",
-  "WTI Crude Oil": "CL=F",
-  Gold: "GC=F",
-  "Dollar Index": "DX-Y.NYB",
-  "10Y Treasury Yield": "^TNX",
-  VIX: "^VIX",
+// New function to fetch data from our backend
+export async function refreshAssetDataFromDB(assetSymbol: string, assetName: string) {
+  try {
+    console.log(`[Cache] Refreshing ${assetName} (${assetSymbol}) from database...`);
+    const response = await fetch(`/api/asset-analysis?asset=${assetSymbol}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch data for ${assetSymbol}: ${response.status} ${errorText}`);
+    }
+    const data = await response.json();
+
+    if (data && data.length > 0) {
+      const dateRange = {
+        start: data[0].date,
+        end: data[data.length - 1].date,
+      };
+      await eventDataDB.storeAssetClosingPrices(assetName, assetSymbol, data, dateRange);
+      console.log(`[Cache] Successfully refreshed and cached ${assetName}.`);
+      return { success: true, assetName };
+    } else {
+      console.warn(`[Cache] No data returned from API for ${assetName}.`);
+      return { success: false, assetName, error: 'No data returned from API' };
+    }
+  } catch (error) {
+    console.error(`[Cache] Error refreshing ${assetName}:`, error);
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+    return { success: false, assetName, error: errorMessage };
+  }
 }
 
-export const ASSET_NAMES = Object.keys(ASSET_TICKERS)
+// Define the assets that the Event Analysis page will need.
+// The key is the 'assetName' used in the cache, and the value is the 'symbol' used in the API.
+export const ASSET_MAP: Record<string, string> = {
+  "S&P 500": "SPX",
+  "WTI Crude Oil": "WTI",
+  "Gold": "Gold",
+  "Dollar Index": "DXY Index",
+  "10Y Treasury Yield": "UST 10Y Yield",
+  "VIX": "VIX",
+};
 
-// Keep only the refreshAllAssetData function for manual refresh
-
-// Refresh all asset data using GitHub first, then Yahoo Finance with retry limits
-export const refreshAllAssetData = async () => {
-  console.log("Refreshing all asset closing prices with throttled GitHub and Yahoo Finance calls")
-
-  const refreshPromises: Promise<void>[] = []
-  const MAX_RETRIES = 3
-
-  for (const assetName of ASSET_NAMES) {
-    refreshPromises.push(
-      (async () => {
-        try {
-          console.log(`Refreshing closing prices for ${assetName}`)
-          const ticker = ASSET_TICKERS[assetName as keyof typeof ASSET_TICKERS]
-
-          // Check if asset has failed recently
-          const failureInfo = await eventDataDB.getAssetFailure(assetName)
-          if (failureInfo) {
-            const now = Date.now()
-            const cooldownPeriod = 5 * 60 * 1000 // 5 minutes
-
-            const yahooInCooldown = failureInfo.yahooFailed && now - failureInfo.lastYahooAttempt < cooldownPeriod
-            const githubInCooldown = failureInfo.githubFailed && now - failureInfo.lastGithubAttempt < cooldownPeriod
-
-            if (yahooInCooldown && githubInCooldown) {
-              console.log(`Skipping ${assetName} - both APIs in cooldown period`)
-              return
-            }
-
-            // Clear old failure info after cooldown
-            if (!yahooInCooldown && !githubInCooldown) {
-              await eventDataDB.clearAssetFailure(assetName)
-            }
-          }
-
-          // Try GitHub first
-          let githubSuccess = false
-          if (!failureInfo?.githubFailed || Date.now() - failureInfo.lastGithubAttempt > 5 * 60 * 1000) {
-            try {
-              const githubResponse = await fetch("/api/check-repo-data", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ticker }),
-              })
-
-              if (githubResponse.ok) {
-                const githubData = await githubResponse.json()
-                if (githubData.data && githubData.data.length > 0) {
-                  const dateRange = {
-                    start: githubData.data[0].date,
-                    end: githubData.data[githubData.data.length - 1].date,
-                  }
-
-                  // Store only closing prices
-                  await eventDataDB.storeAssetClosingPrices(assetName, ticker, githubData.data, dateRange)
-                  githubSuccess = true
-                  console.log(`Updated ${assetName} closing prices from GitHub: ${githubData.data.length} data points`)
-                }
-              } else if (githubResponse.status === 429) {
-                const errorData = await githubResponse.json()
-                await eventDataDB.storeGithubFailure(
-                  assetName,
-                  ticker,
-                  errorData.retryInfo.attempts,
-                  errorData.error,
-                  errorData.retryInfo.nextRetryAvailable,
-                )
-                console.log(`GitHub API limit reached for ${assetName}`)
-              }
-            } catch (githubError) {
-              console.error(`GitHub failed for ${assetName}:`, githubError)
-            }
-          }
-
-          // Try Yahoo Finance if GitHub failed or no data
-          if (
-            !githubSuccess &&
-            (!failureInfo?.yahooFailed || Date.now() - failureInfo.lastYahooAttempt > 5 * 60 * 1000)
-          ) {
-            try {
-              const yahooResponse = await fetch("/api/download", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  tickers: [ticker],
-                  period: "max",
-                  extraData: false,
-                }),
-              })
-
-              if (yahooResponse.ok) {
-                const yahooData = await yahooResponse.json()
-                if (yahooData.data && yahooData.data.length > 0) {
-                  const dateRange = {
-                    start: yahooData.data[0].Date,
-                    end: yahooData.data[yahooData.data.length - 1].Date,
-                  }
-
-                  // Store only closing prices
-                  await eventDataDB.storeAssetClosingPrices(assetName, ticker, yahooData.data, dateRange)
-                  console.log(
-                    `Updated ${assetName} closing prices from Yahoo Finance: ${yahooData.data.length} data points`,
-                  )
-                }
-              } else if (yahooResponse.status === 429) {
-                const errorData = await yahooResponse.json()
-                await eventDataDB.storeYahooFailure(
-                  assetName,
-                  ticker,
-                  errorData.retryInfo.attempts,
-                  errorData.error,
-                  errorData.retryInfo.nextRetryAvailable,
-                )
-                console.log(`Yahoo Finance API limit reached for ${assetName}`)
-              }
-            } catch (yahooError) {
-              console.error(`Yahoo Finance failed for ${assetName}:`, yahooError)
-            }
-          }
-        } catch (error) {
-          console.error(`Failed to refresh ${assetName}:`, error)
-        }
-      })(),
-    )
-  }
-
-  // Execute in batches to avoid overwhelming the APIs
-  const batchSize = 2
-  for (let i = 0; i < refreshPromises.length; i += batchSize) {
-    const batch = refreshPromises.slice(i, i + batchSize)
-
-    try {
-      await Promise.allSettled(batch)
-    } catch (error) {
-      console.error(`Batch ${i / batchSize + 1} failed:`, error)
-    }
-
-    // Delay between batches
-    if (i + batchSize < refreshPromises.length) {
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-    }
-  }
-
-  console.log("All asset closing price refresh completed with GitHub and Yahoo Finance throttling")
-}
+export const ASSET_NAMES = Object.keys(ASSET_MAP);
