@@ -62,11 +62,35 @@ export async function GET(request: NextRequest) {
   const startYear = searchParams.get("startYear")
   const endYear = searchParams.get("endYear")
 
-  if (!series || !ECONOMIC_SERIES[series as keyof typeof ECONOMIC_SERIES]) {
-    return NextResponse.json({ error: "Invalid series specified" }, { status: 400 })
-  }
+  let seriesConfig = ECONOMIC_SERIES[series as keyof typeof ECONOMIC_SERIES];
 
-  const seriesConfig = ECONOMIC_SERIES[series as keyof typeof ECONOMIC_SERIES]
+  // If not in hardcoded config, look up in DB
+  if (!seriesConfig) {
+    try {
+      const client = await economicDataPool.connect();
+      try {
+        const result = await client.query(
+          `SELECT series_id, label, source, unit_id, period_id FROM indicator_mapping WHERE series_id = $1`,
+          [series]
+        );
+        if (result.rows.length === 0) {
+          return NextResponse.json({ error: "Invalid series specified" }, { status: 400 });
+        }
+        // Optionally, fetch unit and period names if needed
+        seriesConfig = {
+          id: result.rows[0].series_id,
+          name: result.rows[0].label,
+          source: result.rows[0].source,
+          unit: result.rows[0].unit_id ? String(result.rows[0].unit_id) : '',
+          frequency: result.rows[0].period_id ? String(result.rows[0].period_id) : '',
+        };
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      return NextResponse.json({ error: "Failed to look up series metadata" }, { status: 500 });
+    }
+  }
 
   try {
     let query = `SELECT date, value FROM indicator_values WHERE series_id = $1`
@@ -113,5 +137,27 @@ export async function GET(request: NextRequest) {
       { error: `Failed to fetch ${series} data: ${error instanceof Error ? error.message : "Unknown error"}` },
       { status: 500 },
     )
+  }
+}
+
+export async function GET_SERIES() {
+  try {
+    const client = await economicDataPool.connect();
+    try {
+      const result = await client.query(
+        `SELECT series_id, label, source, indicator_category FROM indicator_mapping ORDER BY label ASC`
+      );
+      return NextResponse.json({
+        series: result.rows
+      });
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Error fetching series list:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch series list.' },
+      { status: 500 }
+    );
   }
 }

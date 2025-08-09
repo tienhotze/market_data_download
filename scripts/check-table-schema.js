@@ -17,33 +17,36 @@ async function checkTableSchema() {
     console.log('✅ Connected to asset_prices database.');
 
     // Check the schema of prices_ohlcv_daily table
-    const schemaQuery = `
-      SELECT column_name, data_type, is_nullable
-      FROM information_schema.columns
-      WHERE table_name = 'prices_ohlcv_daily'
-      ORDER BY ordinal_position;
-    `;
-    const schemaResult = await client.query(schemaQuery);
+    const tables = ['prices_ohlcv_daily', 'assets', 'asset_types'];
+    for (const table of tables) {
+      const schemaQuery = `
+        SELECT column_name, data_type, is_nullable
+        FROM information_schema.columns
+        WHERE table_name = '${table}'
+        ORDER BY ordinal_position;
+      `;
+      const schemaResult = await client.query(schemaQuery);
 
-    if (schemaResult.rows.length > 0) {
-      console.log('📋 prices_ohlcv_daily table columns:');
-      console.table(schemaResult.rows);
-      
-      // Also show the column names in a simple list
-      console.log('Column names:', schemaResult.rows.map(r => r.column_name).join(', '));
-    } else {
-      console.log('No columns found for prices_ohlcv_daily table.');
-    }
+      if (schemaResult.rows.length > 0) {
+        console.log(`📋 ${table} table columns:`);
+        console.table(schemaResult.rows);
+        
+        // Also show the column names in a simple list
+        console.log('Column names:', schemaResult.rows.map(r => r.column_name).join(', '));
+      } else {
+        console.log(`No columns found for ${table} table.`);
+      }
 
-    // Also check a few sample rows to see the actual data structure
-    const sampleQuery = `
-      SELECT * FROM prices_ohlcv_daily LIMIT 3;
-    `;
-    const sampleResult = await client.query(sampleQuery);
+      // Also check a few sample rows to see the actual data structure
+      const sampleQuery = `
+        SELECT * FROM ${table} LIMIT 3;
+      `;
+      const sampleResult = await client.query(sampleQuery);
 
-    if (sampleResult.rows.length > 0) {
-      console.log('📋 Sample data from prices_ohlcv_daily:');
-      console.table(sampleResult.rows);
+      if (sampleResult.rows.length > 0) {
+        console.log(`📋 Sample data from ${table}:`);
+        console.table(sampleResult.rows);
+      }
     }
 
   } catch (err) {

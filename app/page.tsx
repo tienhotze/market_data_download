@@ -320,6 +320,48 @@ export default function HomePage() {
               </Link>
             </CardContent>
           </Card>
+
+          {/* FX Markets */}
+          <Card className="group hover:shadow-xl transition-all duration-300 border-cyan-200 hover:border-cyan-400">
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between">
+                <div className="p-3 bg-cyan-100 rounded-lg group-hover:bg-cyan-200 transition-colors">
+                  <DollarSign className="h-8 w-8 text-cyan-600" />
+                </div>
+                <Badge variant="secondary" className="bg-cyan-50 text-cyan-700">
+                  FX Markets
+                </Badge>
+              </div>
+              <CardTitle className="text-xl text-gray-900">
+                FX Markets Analytics
+              </CardTitle>
+              <CardDescription className="text-gray-600">
+                Analyze funding rates and cross-correlations for currency pairs
+                with interactive visualizations.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="space-y-3 mb-6">
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="w-2 h-2 bg-cyan-400 rounded-full"></div>
+                  <span>OANDA funding rates for currency pairs</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="w-2 h-2 bg-cyan-400 rounded-full"></div>
+                  <span>Cross-correlation matrix for 68 currency pairs</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="w-2 h-2 bg-cyan-400 rounded-full"></div>
+                  <span>Adjustable time periods (30, 90 days, etc.)</span>
+                </div>
+              </div>
+              <Link href="/fx-markets">
+                <Button className="w-full bg-cyan-600 hover:bg-cyan-700 text-white">
+                  Open FX Markets
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Feature Statistics */}
