@@ -242,13 +242,13 @@ export default function FXMarketsPage() {
         <table className="w-full text-sm border-collapse border border-gray-300">
           <thead>
             <tr className="bg-gray-100">
-              <th className="border border-gray-300 px-2 py-1 text-left">
+              <th className="border border-gray-300 px-2 py-1 text-left sticky top-0 left-0 bg-gray-100 z-10">
                 Symbol
               </th>
               {sortedDates.map((date) => (
                 <th
                   key={date}
-                  className="border border-gray-300 px-2 py-1 text-right"
+                  className="border border-gray-300 px-2 py-1 text-right sticky top-0 bg-gray-100"
                 >
                   {new Date(date).toLocaleDateString()}
                 </th>
@@ -258,7 +258,7 @@ export default function FXMarketsPage() {
           <tbody>
             {correlationMatrix.assets.map((asset) => (
               <tr key={asset} className="hover:bg-gray-50">
-                <td className="border border-gray-300 px-2 py-1 font-medium">
+                <td className="border border-gray-300 px-2 py-1 font-medium sticky left-0 bg-white">
                   {asset}
                 </td>
                 {sortedDates.map((date) => (
@@ -295,7 +295,14 @@ export default function FXMarketsPage() {
       prices.forEach((price) => allDates.add(price.date));
     });
 
-    const sortedDates = Array.from(allDates).sort(
+    const filteredDates = Array.from(allDates).filter((date) => {
+      // Check if all assets have a price on this date
+      return correlationMatrix.assets.every(
+        (asset) => priceMap[asset] && priceMap[asset][date]
+      );
+    });
+
+    const sortedDates = filteredDates.sort(
       (a, b) => new Date(b).getTime() - new Date(a).getTime()
     );
 
@@ -418,7 +425,7 @@ export default function FXMarketsPage() {
         const avgChange = averagePriceChanges[rate.symbol];
         if (avgChange === undefined) return null;
         return {
-          x: avgChange,
+          x: avgChange * 12 * 100,
           y: rate[scatterPlotYAxis],
           text: rate.symbol,
         };
