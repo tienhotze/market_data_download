@@ -10,6 +10,8 @@ The FX Markets Analytics page provides comprehensive analysis tools for foreign 
 2. **Cross-Correlation Matrix** - Analyze correlations between currency pairs with adjustable time periods
 3. **Interactive Visualization** - Heatmap visualization of correlation matrix with color-coded values
 4. **Time Period Selection** - Choose different analysis periods (30, 90, 180 days, or 1 year)
+5. **Funding Rates Scatter Plots** - Visualize funding rates against various performance metrics (1-month realized volatility, Sharpe Ratio, Sortino Ratio, 1-month annualized returns)
+6. **Enhanced Performance Metrics** - View long and short funding rates in the correlation matrix performance metrics table
 
 ## Implementation Details
 
@@ -57,11 +59,16 @@ CREATE TABLE funding_rates (
 
    - Data table showing funding rates for currency pairs
    - Columns: Symbol, Long Rate, Short Rate, Effective Date, Timestamp
+   - Scatter plots for funding rates vs 1-month realized volatility
+   - Scatter plots for funding rates vs Sharpe Ratio
+   - Scatter plots for funding rates vs Sortino Ratio
+   - Scatter plots for funding rates vs 1-month annualized returns
 
 3. **Correlation Matrix Panel**
    - Interactive heatmap visualization using Plotly.js
    - Time period selector for correlation analysis
    - Color-coded correlation values (red for negative, green for positive)
+   - Performance metrics table with Long Rate and Short Rate columns
 
 ## Usage Instructions
 
@@ -73,6 +80,7 @@ Navigate to `/fx-markets` to access the FX Markets Analytics page.
 
 1. The funding rates tab displays current funding rates for currency pairs from OANDA
 2. Click "Refresh Data" to fetch the latest funding rates
+3. View scatter plots to analyze funding rates against various performance metrics
 
 ### Analyzing Correlation Matrix
 
@@ -81,6 +89,7 @@ Navigate to `/fx-markets` to access the FX Markets Analytics page.
 3. Click "Calculate Matrix" to generate the correlation matrix
 4. Hover over cells in the heatmap to view correlation values
 5. The diagonal of the matrix will always show 1.0 (perfect correlation with itself)
+6. View the performance metrics table to see long and short funding rates for each currency pair
 
 ## Technical Considerations
 
@@ -118,3 +127,5 @@ To test the FX Markets Analytics page:
 3. Test API endpoints with sample requests
 4. Verify correlation calculations with known datasets
 5. Check UI responsiveness on different devices
+6. Verify scatter plots display correctly with proper data formatting
+7. Verify performance metrics table includes Long Rate and Short Rate columns

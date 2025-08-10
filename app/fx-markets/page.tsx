@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Navigation } from "@/components/navigation";
+import { calculateStandardDeviation } from "@/lib/technical-indicators";
 import {
   Card,
   CardContent,
@@ -55,6 +56,11 @@ export default function FXMarketsPage() {
     key: keyof FundingRate;
     direction: "ascending" | "descending";
   } | null>({ key: "long_rate", direction: "descending" });
+  const [performanceMetricsSortConfig, setPerformanceMetricsSortConfig] =
+    useState<{
+      key: string;
+      direction: "ascending" | "descending";
+    } | null>({ key: "sharpeRatio", direction: "descending" });
   const [scatterPlotYAxis, setScatterPlotYAxis] = useState<
     "long_rate" | "short_rate"
   >("long_rate");
@@ -307,7 +313,7 @@ export default function FXMarketsPage() {
     );
 
     const priceChanges: Record<string, Record<string, number>> = {};
-    const averagePriceChanges: Record<string, number> = {};
+    const realizedVolatility: Record<string, number> = {};
 
     correlationMatrix.assets.forEach((asset) => {
       priceChanges[asset] = {};
@@ -323,9 +329,16 @@ export default function FXMarketsPage() {
           changes.push(change);
         }
       }
+
+      // Calculate 1-month realized volatility (stdev of daily changes * sqrt(260))
       if (changes.length > 0) {
-        averagePriceChanges[asset] =
-          changes.reduce((a, b) => a + b, 0) / changes.length;
+        // Calculate standard deviation of daily changes
+        const stdDevDaily = calculateStandardDeviation(changes, changes.length)[
+          changes.length - 1
+        ];
+        if (stdDevDaily !== null) {
+          realizedVolatility[asset] = stdDevDaily * Math.sqrt(260);
+        }
       }
     });
 
@@ -347,7 +360,7 @@ export default function FXMarketsPage() {
                 </th>
               ))}
               <th className="border border-gray-300 px-2 py-1 text-right sticky top-0 bg-gray-100">
-                30d Avg
+                1mth Realized Vol
               </th>
             </tr>
           </thead>
@@ -368,14 +381,321 @@ export default function FXMarketsPage() {
                   </td>
                 ))}
                 <td className="border border-gray-300 px-2 py-1 text-right">
-                  {averagePriceChanges[asset]
-                    ? `${(averagePriceChanges[asset] * 100).toFixed(2)}%`
+                  {realizedVolatility[asset]
+                    ? `${(realizedVolatility[asset] * 100).toFixed(2)}%`
                     : "N/A"}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      </div>
+    );
+  };
+
+  const requestPerformanceMetricsSort = (key: string) => {
+    let direction: "ascending" | "descending" = "ascending";
+    if (
+      performanceMetricsSortConfig &&
+      performanceMetricsSortConfig.key === key &&
+      performanceMetricsSortConfig.direction === "ascending"
+    ) {
+      direction = "descending";
+    }
+    setPerformanceMetricsSortConfig({ key, direction });
+  };
+
+  const getPerformanceMetricsSortIndicator = (key: string) => {
+    if (
+      !performanceMetricsSortConfig ||
+      performanceMetricsSortConfig.key !== key
+    ) {
+      return null;
+    }
+    return performanceMetricsSortConfig.direction === "ascending"
+      ? " 🔼"
+      : " 🔽";
+  };
+
+  const sortedPerformanceMetrics = (
+    performanceMetrics: Record<
+      string,
+      {
+        sharpeRatio: number | null;
+        sortinoRatio: number | null;
+        realizedVolatility: number | null;
+        annualizedReturn: number | null;
+      }
+    >
+  ) => {
+    if (!performanceMetricsSortConfig) {
+      // Default sort by Sharpe Ratio descending
+      return Object.entries(performanceMetrics).sort((a, b) => {
+        const aVal = a[1].sharpeRatio ?? -Infinity;
+        const bVal = b[1].sharpeRatio ?? -Infinity;
+        return bVal - aVal;
+      });
+    }
+
+    return Object.entries(performanceMetrics).sort((a, b) => {
+      let aValue: number | null = null;
+      let bValue: number | null = null;
+
+      switch (performanceMetricsSortConfig.key) {
+        case "sharpeRatio":
+          aValue = a[1].sharpeRatio;
+          bValue = b[1].sharpeRatio;
+          break;
+        case "sortinoRatio":
+          aValue = a[1].sortinoRatio;
+          bValue = b[1].sortinoRatio;
+          break;
+        case "realizedVolatility":
+          aValue = a[1].realizedVolatility;
+          bValue = b[1].realizedVolatility;
+          break;
+        case "annualizedReturn":
+          aValue = a[1].annualizedReturn;
+          bValue = b[1].annualizedReturn;
+          break;
+        default:
+          aValue = a[1].sharpeRatio;
+          bValue = b[1].sharpeRatio;
+      }
+
+      // Handle null values by treating them as -Infinity
+      const aNum = aValue ?? -Infinity;
+      const bNum = bValue ?? -Infinity;
+
+      if (performanceMetricsSortConfig.direction === "ascending") {
+        return aNum - bNum;
+      } else {
+        return bNum - aNum;
+      }
+    });
+  };
+
+  const createPerformanceMetricsTable = () => {
+    if (!correlationMatrix || !correlationMatrix.priceData) return null;
+
+    const priceMap: Record<string, Record<string, number>> = {};
+    Object.entries(correlationMatrix.priceData).forEach(([symbol, prices]) => {
+      priceMap[symbol] = {};
+      prices.forEach((price) => {
+        priceMap[symbol][price.date] = price.close;
+      });
+    });
+
+    const allDates = new Set<string>();
+    Object.values(correlationMatrix.priceData).forEach((prices) => {
+      prices.forEach((price) => allDates.add(price.date));
+    });
+
+    const filteredDates = Array.from(allDates).filter((date) => {
+      // Check if all assets have a price on this date
+      return correlationMatrix.assets.every(
+        (asset) => priceMap[asset] && priceMap[asset][date]
+      );
+    });
+
+    const sortedDates = filteredDates.sort(
+      (a, b) => new Date(b).getTime() - new Date(a).getTime()
+    );
+
+    const performanceMetrics: Record<
+      string,
+      {
+        sharpeRatio: number | null;
+        sortinoRatio: number | null;
+        realizedVolatility: number | null;
+        annualizedReturn: number | null;
+      }
+    > = {};
+
+    // Get funding rates for each asset
+    const fundingRatesMap: Record<
+      string,
+      { long_rate: number | null; short_rate: number | null }
+    > = {};
+    fundingRates.forEach((rate) => {
+      fundingRatesMap[rate.symbol] = {
+        long_rate: rate.long_rate,
+        short_rate: rate.short_rate,
+      };
+    });
+
+    correlationMatrix.assets.forEach((asset) => {
+      let changes: number[] = [];
+      for (let i = 1; i < sortedDates.length; i++) {
+        const date = sortedDates[i];
+        const prevDate = sortedDates[i - 1];
+        const price = priceMap[asset]?.[date];
+        const prevPrice = priceMap[asset]?.[prevDate];
+        if (price && prevPrice) {
+          const change = (price - prevPrice) / prevPrice;
+          changes.push(change);
+        }
+      }
+
+      // Calculate metrics
+      if (changes.length > 0) {
+        // Annualized return (using mean of daily returns * 260 trading days)
+        const meanReturn = changes.reduce((a, b) => a + b, 0) / changes.length;
+        const annualizedReturn = meanReturn * 260;
+
+        // Realized volatility (stdev of daily changes * sqrt(260))
+        const stdDevDaily = calculateStandardDeviation(changes, changes.length)[
+          changes.length - 1
+        ];
+        const realizedVolatility =
+          stdDevDaily !== null ? stdDevDaily * Math.sqrt(260) : null;
+
+        // Sharpe ratio (annualized return / realized volatility)
+        const sharpeRatio =
+          realizedVolatility !== null && realizedVolatility > 0
+            ? annualizedReturn / realizedVolatility
+            : null;
+
+        // Sortino ratio (annualized return / downside deviation)
+        const negativeChanges = changes.filter((change) => change < 0);
+        let sortinoRatio = null;
+        if (negativeChanges.length > 0) {
+          // Calculate downside deviation (std dev of negative returns)
+          const downsideStdDevDaily = calculateStandardDeviation(
+            negativeChanges,
+            negativeChanges.length
+          )[negativeChanges.length - 1];
+          if (downsideStdDevDaily !== null) {
+            const downsideDeviation = downsideStdDevDaily * Math.sqrt(260);
+            sortinoRatio =
+              downsideDeviation > 0
+                ? annualizedReturn / downsideDeviation
+                : null;
+          }
+        } else if (realizedVolatility !== null) {
+          // If no negative returns, use regular volatility
+          sortinoRatio =
+            realizedVolatility > 0
+              ? annualizedReturn / realizedVolatility
+              : null;
+        }
+
+        performanceMetrics[asset] = {
+          sharpeRatio,
+          sortinoRatio,
+          realizedVolatility,
+          annualizedReturn,
+        };
+      } else {
+        performanceMetrics[asset] = {
+          sharpeRatio: null,
+          sortinoRatio: null,
+          realizedVolatility: null,
+          annualizedReturn: null,
+        };
+      }
+    });
+
+    const sortedMetrics = sortedPerformanceMetrics(performanceMetrics);
+
+    return (
+      <div className="overflow-x-auto mt-8">
+        <h3 className="text-xl font-bold mb-4">Performance Metrics</h3>
+        <table className="w-full text-sm border-collapse border border-gray-300">
+          <thead>
+            <tr className="bg-gray-100">
+              <th
+                className="border border-gray-300 px-2 py-1 text-left sticky top-0 left-0 bg-gray-100 z-10 cursor-pointer"
+                onClick={() => requestPerformanceMetricsSort("symbol")}
+              >
+                Symbol{getPerformanceMetricsSortIndicator("symbol")}
+              </th>
+              <th
+                className="border border-gray-300 px-2 py-1 text-right sticky top-0 bg-gray-100 cursor-pointer"
+                onClick={() =>
+                  requestPerformanceMetricsSort("annualizedReturn")
+                }
+              >
+                Annualized Return
+                {getPerformanceMetricsSortIndicator("annualizedReturn")}
+              </th>
+              <th
+                className="border border-gray-300 px-2 py-1 text-right sticky top-0 bg-gray-100 cursor-pointer"
+                onClick={() =>
+                  requestPerformanceMetricsSort("realizedVolatility")
+                }
+              >
+                1mth Realized Vol
+                {getPerformanceMetricsSortIndicator("realizedVolatility")}
+              </th>
+              <th
+                className="border border-gray-300 px-2 py-1 text-right sticky top-0 bg-gray-100 cursor-pointer"
+                onClick={() => requestPerformanceMetricsSort("sharpeRatio")}
+              >
+                Sharpe Ratio{getPerformanceMetricsSortIndicator("sharpeRatio")}
+              </th>
+              <th
+                className="border border-gray-300 px-2 py-1 text-right sticky top-0 bg-gray-100 cursor-pointer"
+                onClick={() => requestPerformanceMetricsSort("sortinoRatio")}
+              >
+                Sortino Ratio
+                {getPerformanceMetricsSortIndicator("sortinoRatio")}
+              </th>
+              <th className="border border-gray-300 px-2 py-1 text-right sticky top-0 bg-gray-100">
+                Long Rate
+              </th>
+              <th className="border border-gray-300 px-2 py-1 text-right sticky top-0 bg-gray-100">
+                Short Rate
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedMetrics.map(([asset, metrics]) => (
+              <tr key={asset} className="hover:bg-gray-50">
+                <td className="border border-gray-300 px-2 py-1 font-medium sticky left-0 bg-white">
+                  {asset}
+                </td>
+                <td className="border border-gray-300 px-2 py-1 text-right">
+                  {metrics.annualizedReturn !== null
+                    ? `${(metrics.annualizedReturn * 100).toFixed(2)}%`
+                    : "N/A"}
+                </td>
+                <td className="border border-gray-300 px-2 py-1 text-right">
+                  {metrics.realizedVolatility !== null
+                    ? `${(metrics.realizedVolatility * 100).toFixed(2)}%`
+                    : "N/A"}
+                </td>
+                <td className="border border-gray-300 px-2 py-1 text-right">
+                  {metrics.sharpeRatio !== null
+                    ? metrics.sharpeRatio.toFixed(2)
+                    : "N/A"}
+                </td>
+                <td className="border border-gray-300 px-2 py-1 text-right">
+                  {metrics.sortinoRatio !== null
+                    ? metrics.sortinoRatio.toFixed(2)
+                    : "N/A"}
+                </td>
+                <td className="border border-gray-300 px-2 py-1 text-right">
+                  {fundingRatesMap[asset] &&
+                  fundingRatesMap[asset].long_rate !== null
+                    ? `${fundingRatesMap[asset].long_rate}%`
+                    : "N/A"}
+                </td>
+                <td className="border border-gray-300 px-2 py-1 text-right">
+                  {fundingRatesMap[asset] &&
+                  fundingRatesMap[asset].short_rate !== null
+                    ? `${fundingRatesMap[asset].short_rate}%`
+                    : "N/A"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="text-sm text-gray-500 mt-2">
+          Formulas: Sharpe Ratio = Annualized Return / 1mth Realized Vol,
+          Sortino Ratio = Annualized Return / Downside Deviation, 1mth Realized
+          Vol = stdev(1mth % price change)*sqrt(260)
+        </div>
       </div>
     );
   };
@@ -400,7 +720,16 @@ export default function FXMarketsPage() {
       (a, b) => new Date(a).getTime() - new Date(b).getTime()
     );
 
-    const averagePriceChanges: Record<string, number> = {};
+    const realizedVolatility: Record<string, number> = {};
+    const performanceMetrics: Record<
+      string,
+      {
+        sharpeRatio: number | null;
+        sortinoRatio: number | null;
+        realizedVolatility: number | null;
+        annualizedReturn: number | null;
+      }
+    > = {};
 
     correlationMatrix.assets.forEach((asset) => {
       let changes: number[] = [];
@@ -414,18 +743,114 @@ export default function FXMarketsPage() {
           changes.push(change);
         }
       }
+
+      // Calculate metrics
       if (changes.length > 0) {
-        averagePriceChanges[asset] =
-          changes.reduce((a, b) => a + b, 0) / changes.length;
+        // Annualized return (using mean of daily returns * 260 trading days)
+        const meanReturn = changes.reduce((a, b) => a + b, 0) / changes.length;
+        const annualizedReturn = meanReturn * 260;
+
+        // Realized volatility (stdev of daily changes * sqrt(260))
+        const stdDevDaily = calculateStandardDeviation(changes, changes.length)[
+          changes.length - 1
+        ];
+        const realizedVolatilityValue =
+          stdDevDaily !== null ? stdDevDaily * Math.sqrt(260) : null;
+
+        // Sharpe ratio (annualized return / realized volatility)
+        const sharpeRatio =
+          realizedVolatilityValue !== null && realizedVolatilityValue > 0
+            ? annualizedReturn / realizedVolatilityValue
+            : null;
+
+        // Sortino ratio (annualized return / downside deviation)
+        const negativeChanges = changes.filter((change) => change < 0);
+        let sortinoRatio = null;
+        if (negativeChanges.length > 0) {
+          // Calculate downside deviation (std dev of negative returns)
+          const downsideStdDevDaily = calculateStandardDeviation(
+            negativeChanges,
+            negativeChanges.length
+          )[negativeChanges.length - 1];
+          if (downsideStdDevDaily !== null) {
+            const downsideDeviation = downsideStdDevDaily * Math.sqrt(260);
+            sortinoRatio =
+              downsideDeviation > 0
+                ? annualizedReturn / downsideDeviation
+                : null;
+          }
+        } else if (realizedVolatilityValue !== null) {
+          // If no negative returns, use regular volatility
+          sortinoRatio =
+            realizedVolatilityValue > 0
+              ? annualizedReturn / realizedVolatilityValue
+              : null;
+        }
+
+        performanceMetrics[asset] = {
+          sharpeRatio,
+          sortinoRatio,
+          realizedVolatility: realizedVolatilityValue,
+          annualizedReturn,
+        };
+
+        // Also store in realizedVolatility for backward compatibility
+        if (realizedVolatilityValue !== null) {
+          realizedVolatility[asset] = realizedVolatilityValue;
+        }
+      } else {
+        performanceMetrics[asset] = {
+          sharpeRatio: null,
+          sortinoRatio: null,
+          realizedVolatility: null,
+          annualizedReturn: null,
+        };
       }
     });
 
-    const scatterData = fundingRates
+    const scatterData1 = fundingRates
       .map((rate) => {
-        const avgChange = averagePriceChanges[rate.symbol];
-        if (avgChange === undefined) return null;
+        const vol = realizedVolatility[rate.symbol];
+        if (vol === undefined) return null;
         return {
-          x: avgChange * 12 * 100,
+          x: vol * 100, // Convert to percentage and format to 2 decimal places
+          y: rate[scatterPlotYAxis],
+          text: rate.symbol,
+        };
+      })
+      .filter((item) => item !== null);
+
+    const scatterData2 = fundingRates
+      .map((rate) => {
+        const metrics = performanceMetrics[rate.symbol];
+        if (metrics === undefined || metrics.sharpeRatio === null) return null;
+        return {
+          x: metrics.sharpeRatio,
+          y: rate[scatterPlotYAxis],
+          text: rate.symbol,
+        };
+      })
+      .filter((item) => item !== null);
+
+    const scatterData3 = fundingRates
+      .map((rate) => {
+        const metrics = performanceMetrics[rate.symbol];
+        if (metrics === undefined || metrics.sortinoRatio === null) return null;
+        return {
+          x: metrics.sortinoRatio,
+          y: rate[scatterPlotYAxis],
+          text: rate.symbol,
+        };
+      })
+      .filter((item) => item !== null);
+
+    const scatterData4 = fundingRates
+      .map((rate) => {
+        const metrics = performanceMetrics[rate.symbol];
+        if (metrics === undefined || metrics.annualizedReturn === null)
+          return null;
+        return {
+          x: metrics.annualizedReturn,
           y: rate[scatterPlotYAxis],
           text: rate.symbol,
         };
@@ -448,26 +873,119 @@ export default function FXMarketsPage() {
             Short Rate
           </Button>
         </div>
-        <Plot
-          data={[
-            {
-              x: scatterData.map((d) => d.x),
-              y: scatterData.map((d) => d.y),
-              text: scatterData.map((d) => d.text),
-              mode: "markers",
-              type: "scatter",
-            },
-          ]}
-          layout={{
-            title: `Funding Rates vs 30d Avg Price Change`,
-            xaxis: { title: "30d Avg Price Change" },
-            yaxis: {
-              title:
-                scatterPlotYAxis === "long_rate" ? "Long Rate" : "Short Rate",
-            },
-          }}
-          config={{ responsive: true }}
-        />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div>
+            <Plot
+              data={[
+                {
+                  x: scatterData1.map((d) => d.x),
+                  y: scatterData1.map((d) => d.y),
+                  text: scatterData1.map((d) => d.text),
+                  mode: "markers",
+                  type: "scatter",
+                },
+              ]}
+              layout={{
+                title: {
+                  text: "Funding rates vs 1mth realised vol",
+                  font: { size: 24 }, // 200% bigger than default
+                },
+                xaxis: { title: "1mth Realised Vol (%)" },
+                yaxis: {
+                  title:
+                    scatterPlotYAxis === "long_rate"
+                      ? "Long Rate"
+                      : "Short Rate",
+                },
+              }}
+              config={{ responsive: true }}
+            />
+            <div className="text-sm text-gray-500 mt-2">
+              1mth realised vol = stdev(1mth % price change)*sqrt(260)
+            </div>
+          </div>
+          <div>
+            <Plot
+              data={[
+                {
+                  x: scatterData2.map((d) => d.x),
+                  y: scatterData2.map((d) => d.y),
+                  text: scatterData2.map((d) => d.text),
+                  mode: "markers",
+                  type: "scatter",
+                },
+              ]}
+              layout={{
+                title: {
+                  text: "Funding rates vs Sharpe Ratio",
+                  font: { size: 24 }, // 200% bigger than default
+                },
+                xaxis: { title: "Sharpe Ratio" },
+                yaxis: {
+                  title:
+                    scatterPlotYAxis === "long_rate"
+                      ? "Long Rate"
+                      : "Short Rate",
+                },
+              }}
+              config={{ responsive: true }}
+            />
+          </div>
+          <div>
+            <Plot
+              data={[
+                {
+                  x: scatterData3.map((d) => d.x),
+                  y: scatterData3.map((d) => d.y),
+                  text: scatterData3.map((d) => d.text),
+                  mode: "markers",
+                  type: "scatter",
+                },
+              ]}
+              layout={{
+                title: {
+                  text: "Funding rates vs Sortino Ratio",
+                  font: { size: 24 }, // 200% bigger than default
+                },
+                xaxis: { title: "Sortino Ratio" },
+                yaxis: {
+                  title:
+                    scatterPlotYAxis === "long_rate"
+                      ? "Long Rate"
+                      : "Short Rate",
+                },
+              }}
+              config={{ responsive: true }}
+            />
+          </div>
+          <div>
+            <Plot
+              data={[
+                {
+                  x: scatterData4.map((d) => d.x),
+                  y: scatterData4.map((d) => d.y),
+                  text: scatterData4.map((d) => d.text),
+                  mode: "markers",
+                  type: "scatter",
+                },
+              ]}
+              layout={{
+                title: {
+                  text: "Funding rates vs 1mth Annualised Return",
+                  font: { size: 24 }, // 200% bigger than default
+                },
+                xaxis: { title: "1mth Annualised Return" },
+                yaxis: {
+                  title:
+                    scatterPlotYAxis === "long_rate"
+                      ? "Long Rate"
+                      : "Short Rate",
+                },
+              }}
+              config={{ responsive: true }}
+            />
+          </div>
+        </div>
       </div>
     );
   };
@@ -543,6 +1061,7 @@ export default function FXMarketsPage() {
                     </div>
                     {createPriceDataTable()}
                     {createPriceChangeTable()}
+                    {createPerformanceMetricsTable()}
                   </div>
                 ) : (
                   <div className="text-center py-8 text-gray-500">
